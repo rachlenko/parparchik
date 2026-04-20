@@ -30,13 +30,16 @@ services:
         echo "Buckets created and configured"
 
   parparchik:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.test
     ports:
       - "8080:8080"
     environment:
       PARPARCHIK_PUBLIC_BUCKET: public-bucket
       PARPARCHIK_PRIVATE_BUCKET: private-bucket
       S3_ENDPOINT: minio:9000
+      S3_EXTERNAL_ENDPOINT: "localhost:9000"
       AWS_REGION: us-east-1
       AWS_ACCESS_KEY_ID: minioadmin
       AWS_SECRET_ACCESS_KEY: minioadmin

@@ -10,6 +10,8 @@
 #
 set -euo pipefail
 
+MC="${MC:-mc}"
+
 MINIO_ENDPOINT="${MINIO_ENDPOINT:-http://localhost:9000}"
 MINIO_ALIAS="e2etest"
 MINIO_USER="${MINIO_USER:-minioadmin}"
@@ -34,12 +36,12 @@ assert_eq() {
     local label="$1" expected="$2" actual="$3"
     if [ "$expected" = "$actual" ]; then
         echo -e "  ${GREEN}PASS${NC} ${label}"
-        ((pass++))
+        pass=$((pass + 1))
     else
         echo -e "  ${RED}FAIL${NC} ${label}"
         echo -e "       expected: ${expected}"
         echo -e "       actual:   ${actual}"
-        ((fail++))
+        fail=$((fail + 1))
     fi
 }
 
@@ -47,12 +49,12 @@ assert_contains() {
     local label="$1" needle="$2" haystack="$3"
     if echo "$haystack" | grep -q "$needle"; then
         echo -e "  ${GREEN}PASS${NC} ${label}"
-        ((pass++))
+        pass=$((pass + 1))
     else
         echo -e "  ${RED}FAIL${NC} ${label}"
         echo -e "       expected to contain: ${needle}"
         echo -e "       got: ${haystack}"
-        ((fail++))
+        fail=$((fail + 1))
     fi
 }
 
@@ -65,8 +67,8 @@ assert_http_status() {
 
 cleanup() {
     echo -e "\n${YELLOW}--- Cleanup ---${NC}"
-    mc rm --force "${MINIO_ALIAS}/${PUBLIC_BUCKET}/${TEST_FILE}" 2>/dev/null || true
-    mc rm --force "${MINIO_ALIAS}/${PRIVATE_BUCKET}/${TEST_FILE}" 2>/dev/null || true
+    $MC rm --force "${MINIO_ALIAS}/${PUBLIC_BUCKET}/${TEST_FILE}" 2>/dev/null || true
+    $MC rm --force "${MINIO_ALIAS}/${PRIVATE_BUCKET}/${TEST_FILE}" 2>/dev/null || true
 }
 
 # ─────────────────────────────────────────────
@@ -76,13 +78,13 @@ cleanup() {
 echo -e "${YELLOW}=== parparchik e2e test ===${NC}\n"
 
 echo "Configuring MinIO client..."
-mc alias set "${MINIO_ALIAS}" "${MINIO_ENDPOINT}" "${MINIO_USER}" "${MINIO_PASS}" --api S3v4 >/dev/null
+$MC alias set "${MINIO_ALIAS}" "${MINIO_ENDPOINT}" "${MINIO_USER}" "${MINIO_PASS}" --api S3v4 >/dev/null
 
 trap cleanup EXIT
 
 echo "Cleaning previous test data..."
-mc rm --force "${MINIO_ALIAS}/${PUBLIC_BUCKET}/${TEST_FILE}" 2>/dev/null || true
-mc rm --force "${MINIO_ALIAS}/${PRIVATE_BUCKET}/${TEST_FILE}" 2>/dev/null || true
+$MC rm --force "${MINIO_ALIAS}/${PUBLIC_BUCKET}/${TEST_FILE}" 2>/dev/null || true
+$MC rm --force "${MINIO_ALIAS}/${PRIVATE_BUCKET}/${TEST_FILE}" 2>/dev/null || true
 
 # Wait for the app
 echo "Waiting for parparchik at ${APP_URL}..."
@@ -107,11 +109,11 @@ assert_contains "/status shows public bucket" "\"public_bucket\": \"${PUBLIC_BUC
 # ─────────────────────────────────────────────
 echo -e "\n${YELLOW}--- Step 2: Upload to public bucket ---${NC}"
 
-echo -n "${TEST_CONTENT}" | mc pipe "${MINIO_ALIAS}/${PUBLIC_BUCKET}/${TEST_FILE}"
+echo -n "${TEST_CONTENT}" | $MC pipe "${MINIO_ALIAS}/${PUBLIC_BUCKET}/${TEST_FILE}"
 echo "  Uploaded ${TEST_FILE} to ${PUBLIC_BUCKET}"
 
 # Verify via mc
-mc_stat=$(mc stat "${MINIO_ALIAS}/${PUBLIC_BUCKET}/${TEST_FILE}" 2>&1 || true)
+mc_stat=$($MC stat "${MINIO_ALIAS}/${PUBLIC_BUCKET}/${TEST_FILE}" 2>&1 || true)
 assert_contains "File exists in public bucket" "${TEST_FILE}" "$mc_stat"
 
 # ─────────────────────────────────────────────
@@ -134,7 +136,7 @@ echo -e "\n${YELLOW}--- Step 4: Download from /public/ route ---${NC}"
 download_url=$(curl -s -o /dev/null -w "%{redirect_url}" "${APP_URL}/public/${TEST_FILE}")
 assert_contains "Redirect points to public bucket" "${PUBLIC_BUCKET}" "$download_url"
 
-downloaded=$(curl -sfL "${APP_URL}/public/${TEST_FILE}")
+downloaded=$(curl -sf "${download_url}")
 assert_eq "Downloaded content matches" "${TEST_CONTENT}" "${downloaded}"
 
 # ─────────────────────────────────────────────
@@ -142,14 +144,21 @@ assert_eq "Downloaded content matches" "${TEST_CONTENT}" "${downloaded}"
 # ─────────────────────────────────────────────
 echo -e "\n${YELLOW}--- Step 5: Move file public → private ---${NC}"
 
-mc cp "${MINIO_ALIAS}/${PUBLIC_BUCKET}/${TEST_FILE}" "${MINIO_ALIAS}/${PRIVATE_BUCKET}/${TEST_FILE}" >/dev/null
-mc rm --force "${MINIO_ALIAS}/${PUBLIC_BUCKET}/${TEST_FILE}" >/dev/null
+$MC cp "${MINIO_ALIAS}/${PUBLIC_BUCKET}/${TEST_FILE}" "${MINIO_ALIAS}/${PRIVATE_BUCKET}/${TEST_FILE}" >/dev/null
+$MC rm --force "${MINIO_ALIAS}/${PUBLIC_BUCKET}/${TEST_FILE}" >/dev/null
 echo "  Moved ${TEST_FILE} from ${PUBLIC_BUCKET} to ${PRIVATE_BUCKET}"
 
 # Verify state in MinIO
-mc_pub=$(mc ls "${MINIO_ALIAS}/${PUBLIC_BUCKET}/${TEST_FILE}" 2>&1 || true)
-mc_priv=$(mc stat "${MINIO_ALIAS}/${PRIVATE_BUCKET}/${TEST_FILE}" 2>&1 || true)
-assert_contains "File gone from public" "Object does not exist" "$mc_pub"
+mc_pub=$($MC ls "${MINIO_ALIAS}/${PUBLIC_BUCKET}/${TEST_FILE}" 2>&1 || true)
+mc_priv=$($MC stat "${MINIO_ALIAS}/${PRIVATE_BUCKET}/${TEST_FILE}" 2>&1 || true)
+if [ -z "$mc_pub" ] || echo "$mc_pub" | grep -qi "does not exist"; then
+    echo -e "  ${GREEN}PASS${NC} File gone from public"
+    pass=$((pass + 1))
+else
+    echo -e "  ${RED}FAIL${NC} File gone from public"
+    echo -e "       mc ls returned: ${mc_pub}"
+    fail=$((fail + 1))
+fi
 assert_contains "File exists in private" "${TEST_FILE}" "$mc_priv"
 
 # ─────────────────────────────────────────────
@@ -188,7 +197,7 @@ echo -e "\n${YELLOW}--- Step 9: Download from /private/ route ---${NC}"
 redirect_url2=$(curl -s -o /dev/null -w "%{redirect_url}" "${APP_URL}/private/${TEST_FILE}")
 assert_contains "Redirect points to private bucket" "${PRIVATE_BUCKET}" "$redirect_url2"
 
-downloaded2=$(curl -sfL "${APP_URL}/private/${TEST_FILE}")
+downloaded2=$(curl -sf "${redirect_url2}")
 assert_eq "Downloaded content from private matches" "${TEST_CONTENT}" "${downloaded2}"
 
 # ─────────────────────────────────────────────
