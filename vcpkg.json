@@ -1,0 +1,28 @@
+{
+  "name": "parparchik",
+  "version": "0.1.0",
+  "description": "S3 file routing web service",
+  "dependencies": [
+    "cpp-httplib",
+    "nlohmann-json",
+    "aws-sdk-cpp"
+  ],
+  "overrides": [
+    {
+      "name": "aws-sdk-cpp",
+      "version": "1.11.352"
+    }
+  ],
+  "builtin-baseline": "c82f74667287d3dc386bce81e44964370c91a289",
+  "features": {
+    "s3": {
+      "description": "S3 support only",
+      "dependencies": [
+        {
+          "name": "aws-sdk-cpp",
+          "features": ["s3"]
+        }
+      ]
+    }
+  }
+}
