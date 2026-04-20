@@ -129,7 +129,7 @@ std::string S3Client::GetPublicUrl(const std::string& bucket,
 
 std::string S3Client::GeneratePresignedUrl(const std::string& bucket,
                                            const std::string& key,
-                                           uint64_t expiry_seconds) const {
+                                           uint64_t expiry_seconds) {
   return client_.GeneratePresignedUrl(bucket, key,
                                       Aws::Http::HttpMethod::HTTP_GET,
                                       expiry_seconds);

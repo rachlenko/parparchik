@@ -10,7 +10,14 @@ VCPKGPROXY_DIR := $(abspath ../vcpkgproxy)
 VCPKG_ROOT     := $(VCPKGPROXY_DIR)/vcpkg
 VCPKG_TOOLCHAIN:= $(VCPKG_ROOT)/scripts/buildsystems/vcpkg.cmake
 BUILD_DIR      := build
+TRIPLET_OVERLAY:= $(VCPKGPROXY_DIR)/triplets
 MC             ?= mc
+
+# Ensure vcpkgproxy/bin is on PATH (for sccache)
+export PATH := $(VCPKGPROXY_DIR)/bin:$(PATH)
+
+# macOS: ensure SDK root is set so vcpkg builds find system headers
+export SDKROOT ?= $(shell xcrun --show-sdk-path 2>/dev/null)
 
 # Docker
 COMPOSE        := docker compose
@@ -39,6 +46,7 @@ sccache-install: ## Install sccache from mozilla/sccache releases
 configure: ## Configure CMake with vcpkg toolchain + sccache
 	cmake -B $(BUILD_DIR) \
 		-DCMAKE_TOOLCHAIN_FILE=$(VCPKG_TOOLCHAIN) \
+		-DVCPKG_OVERLAY_TRIPLETS=$(TRIPLET_OVERLAY) \
 		-DCMAKE_C_COMPILER_LAUNCHER=sccache \
 		-DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
 		-DCMAKE_BUILD_TYPE=Release
@@ -47,6 +55,7 @@ configure: ## Configure CMake with vcpkg toolchain + sccache
 configure-debug: ## Configure CMake in Debug mode
 	cmake -B $(BUILD_DIR) \
 		-DCMAKE_TOOLCHAIN_FILE=$(VCPKG_TOOLCHAIN) \
+		-DVCPKG_OVERLAY_TRIPLETS=$(TRIPLET_OVERLAY) \
 		-DCMAKE_C_COMPILER_LAUNCHER=sccache \
 		-DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
 		-DCMAKE_BUILD_TYPE=Debug

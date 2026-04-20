@@ -6,6 +6,20 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# macOS: ensure C++ stdlib headers are found (CommandLineTools on macOS 26+)
+if(APPLE AND NOT DEFINED _PARPARCHIK_CXX_INCLUDE_FIXED)
+    execute_process(
+        COMMAND xcrun --show-sdk-path
+        OUTPUT_VARIABLE _SDK_PATH
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+    set(_CXX_INCLUDE "${_SDK_PATH}/usr/include/c++/v1")
+    if(EXISTS "${_CXX_INCLUDE}")
+        add_compile_options(-isystem "${_CXX_INCLUDE}")
+    endif()
+    set(_PARPARCHIK_CXX_INCLUDE_FIXED TRUE CACHE INTERNAL "")
+endif()
+
 # vcpkg packages (via toolchain file)
 find_package(httplib CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)

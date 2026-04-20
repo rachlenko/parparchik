@@ -39,7 +39,7 @@ class S3Client {
 
   std::string GeneratePresignedUrl(const std::string& bucket,
                                    const std::string& key,
-                                   uint64_t expiry_seconds = 3600) const;
+                                   uint64_t expiry_seconds = 3600);
 
   bool CreateBucket(const std::string& bucket) const;
 
