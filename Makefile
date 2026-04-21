@@ -5,7 +5,7 @@
 SHELL          := /bin/bash
 .DEFAULT_GOAL  := help
 
-# Paths
+# Paths — all dependencies live in ../vcpkgproxy
 VCPKGPROXY_DIR := $(abspath ../vcpkgproxy)
 VCPKG_ROOT     := $(VCPKGPROXY_DIR)/vcpkg
 VCPKG_TOOLCHAIN:= $(VCPKG_ROOT)/scripts/buildsystems/vcpkg.cmake
@@ -13,8 +13,12 @@ BUILD_DIR      := build
 TRIPLET_OVERLAY:= $(VCPKGPROXY_DIR)/triplets
 MC             ?= mc
 
-# Ensure vcpkgproxy/bin is on PATH (for sccache)
-export PATH := $(VCPKGPROXY_DIR)/bin:$(PATH)
+# Point vcpkg at the local proxy for all downloads and binary caches.
+# After `make sync`, no network access is needed.
+export PATH                    := $(VCPKGPROXY_DIR)/bin:$(PATH)
+export VCPKG_ROOT              := $(VCPKG_ROOT)
+export VCPKG_DOWNLOADS         := $(VCPKGPROXY_DIR)/downloads
+export VCPKG_DEFAULT_BINARY_CACHE := $(VCPKGPROXY_DIR)/binary-cache
 
 # macOS: ensure SDK root is set so vcpkg builds find system headers
 export SDKROOT ?= $(shell xcrun --show-sdk-path 2>/dev/null)
@@ -23,23 +27,19 @@ export SDKROOT ?= $(shell xcrun --show-sdk-path 2>/dev/null)
 COMPOSE        := docker compose
 
 # ──────────────────────────────────────────────
-#  vcpkg
+#  vcpkgproxy (offline proxy)
 # ──────────────────────────────────────────────
+
+.PHONY: sync
+sync: ## Download all dependencies into vcpkgproxy (requires network)
+	$(VCPKGPROXY_DIR)/scripts/sync.sh
 
 .PHONY: vcpkg-setup
-vcpkg-setup: ## Set up vcpkgproxy: clone vcpkg, install sccache, fetch packages
+vcpkg-setup: ## Install packages from local vcpkgproxy cache (offline)
 	$(VCPKGPROXY_DIR)/scripts/setup.sh
 
-.PHONY: vcpkg-sync
-vcpkg-sync: ## Sync vcpkg from upstream GitHub
-	$(VCPKGPROXY_DIR)/scripts/sync-vcpkg.sh
-
-.PHONY: sccache-install
-sccache-install: ## Install sccache from mozilla/sccache releases
-	$(VCPKGPROXY_DIR)/scripts/install-sccache.sh
-
 # ──────────────────────────────────────────────
-#  C++ build (native)
+#  C++ build (native, offline after sync)
 # ──────────────────────────────────────────────
 
 .PHONY: configure
@@ -47,6 +47,7 @@ configure: ## Configure CMake with vcpkg toolchain + sccache
 	cmake -B $(BUILD_DIR) \
 		-DCMAKE_TOOLCHAIN_FILE=$(VCPKG_TOOLCHAIN) \
 		-DVCPKG_OVERLAY_TRIPLETS=$(TRIPLET_OVERLAY) \
+		-DVCPKG_INSTALLED_DIR=$(VCPKGPROXY_DIR)/installed \
 		-DCMAKE_C_COMPILER_LAUNCHER=sccache \
 		-DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
 		-DCMAKE_BUILD_TYPE=Release
@@ -56,6 +57,7 @@ configure-debug: ## Configure CMake in Debug mode
 	cmake -B $(BUILD_DIR) \
 		-DCMAKE_TOOLCHAIN_FILE=$(VCPKG_TOOLCHAIN) \
 		-DVCPKG_OVERLAY_TRIPLETS=$(TRIPLET_OVERLAY) \
+		-DVCPKG_INSTALLED_DIR=$(VCPKGPROXY_DIR)/installed \
 		-DCMAKE_C_COMPILER_LAUNCHER=sccache \
 		-DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
 		-DCMAKE_BUILD_TYPE=Debug

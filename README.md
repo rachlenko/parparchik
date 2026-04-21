@@ -87,25 +87,52 @@ curl -L http://localhost:8080/private/photo.jpg   # 302 → presigned URL → do
 
 - CMake 3.25+
 - C++20 compiler (GCC 12+, Clang 15+, Apple Clang 15+)
-- AWS SDK for C++ (installed via vcpkg)
-- sccache (optional, for build caching)
+- git, curl (for initial sync only)
 
-### Using vcpkgproxy
+All other dependencies (AWS SDK, httplib, nlohmann-json, sccache) are managed
+by the `../vcpkgproxy` sibling repository.
 
-The sibling repo `../vcpkgproxy` manages vcpkg and sccache. One command sets up
-everything:
+### vcpkgproxy — offline package proxy
 
-```bash
-# Full setup: clone vcpkg, install sccache, fetch all dependencies
-make vcpkg-setup
+The `../vcpkgproxy` repo acts as a local mirror for all upstream dependencies.
+After a one-time sync, builds work fully offline.
 
-# Or step by step:
-make vcpkg-sync         # Clone/update vcpkg from github.com/microsoft/vcpkg
-make sccache-install    # Download sccache from github.com/mozilla/sccache/releases
+```
+vcpkgproxy/
+├── vcpkg/            git clone of github.com/microsoft/vcpkg (registry)
+├── downloads/        source tarballs (github.com/awslabs/*, mozilla/sccache, etc.)
+├── binary-cache/     pre-built vcpkg packages (*.zip)
+├── installed/        unpacked headers + libs ready for linking
+├── bin/sccache       cached binary from github.com/mozilla/sccache/releases
+├── triplets/         custom triplet overlays (e.g. macOS header fixes)
+├── ports/            custom/patched vcpkg ports
+└── scripts/
+    ├── env.sh        shared paths and versions
+    ├── sync.sh       download everything from upstream (ONLINE)
+    └── setup.sh      install from local cache (OFFLINE)
 ```
 
-After setup, `../vcpkgproxy/vcpkg/` contains the vcpkg installation and
-`../vcpkgproxy/cache/` holds downloaded source archives.
+**Two-phase workflow:**
+
+```bash
+# Phase 1: Sync (requires network, run once)
+make sync
+
+# Phase 2: Build (fully offline)
+make build-all
+```
+
+`make sync` downloads into vcpkgproxy:
+- vcpkg registry from `github.com/microsoft/vcpkg`
+- sccache binary from `github.com/mozilla/sccache/releases`
+- All source tarballs for dependencies declared in `vcpkg.json`
+- Compiles and caches binary packages locally
+
+`make build-all` uses only local files:
+- Restores 23 pre-built packages from `vcpkgproxy/binary-cache/`
+- Installs headers and libs to `vcpkgproxy/installed/`
+- Configures CMake with the vcpkg toolchain
+- Builds `parparchik` with sccache
 
 ### Configuring vcpkg
 
@@ -113,45 +140,44 @@ Dependencies are declared in `vcpkg.json`:
 
 ```json
 {
-  "dependencies": ["cpp-httplib", "nlohmann-json", "aws-sdk-cpp"],
-  "overrides": [{"name": "aws-sdk-cpp", "version": "1.11.352"}]
+  "dependencies": [
+    "cpp-httplib",
+    "nlohmann-json",
+    {"name": "aws-sdk-cpp", "features": ["s3"]}
+  ]
 }
 ```
 
 To add a dependency:
 
 1. Add it to the `dependencies` array in `vcpkg.json`.
-2. Run `make vcpkg-setup` (or `../vcpkgproxy/vcpkg/vcpkg install` in the project root).
+2. Run `make sync` to download and cache the new package.
 3. Add the corresponding `find_package()` and `target_link_libraries()` in `CMakeLists.txt`.
 
-To pin a version, add an entry to `overrides`. The `builtin-baseline` field
-controls the default version set — update it by running:
+The `builtin-baseline` field in `vcpkg.json` pins the version set. Update it with:
 
 ```bash
 cd ../vcpkgproxy/vcpkg
 git log --oneline -1  # use this commit hash as the baseline
 ```
 
-Custom or patched ports go in `../vcpkgproxy/ports/<port-name>/`. They are
-automatically picked up as overlay ports during `make vcpkg-setup`.
+Custom or patched ports go in `../vcpkgproxy/ports/<port-name>/` and are
+automatically picked up as overlay ports.
 
 ### Build
 
 ```bash
-# Configure + build (release)
-make configure
-make build
-
-# Or all at once: vcpkg setup → configure → build
+# Full pipeline: vcpkg setup (offline) → configure → build
 make build-all
+
+# Or step by step:
+make vcpkg-setup    # install packages from local cache
+make configure      # CMake configure (release)
+make build          # compile
 
 # Debug build
 make configure-debug
 make build
-
-# Using CMake presets directly
-cmake --preset vcpkg
-cmake --build build
 ```
 
 The binary is at `build/parparchik`.
@@ -210,14 +236,18 @@ parparchik/
 └── test/
     └── e2e_test.sh          End-to-end test (18 assertions)
 
-../vcpkgproxy/               Sibling repo — package management
+../vcpkgproxy/               Sibling repo — offline package proxy
 ├── scripts/
-│   ├── setup.sh              Full setup: sccache + vcpkg + install
-│   ├── sync-vcpkg.sh         Clone/update vcpkg from GitHub
-│   └── install-sccache.sh    Download sccache binary
-├── ports/                    Overlay ports (custom packages)
-├── cache/                    Downloaded source archives
-└── vcpkg-configuration.json  Registry configuration
+│   ├── env.sh                Shared paths and versions
+│   ├── sync.sh               Download everything from upstream (ONLINE)
+│   └── setup.sh              Install from local cache (OFFLINE)
+├── vcpkg/                    git clone of microsoft/vcpkg (gitignored)
+├── downloads/                Source tarballs (awslabs/*, mozilla/sccache, etc.)
+├── binary-cache/             Pre-built vcpkg packages (*.zip)
+├── installed/                Unpacked headers + libs (gitignored)
+├── bin/                      Cached binaries (sccache)
+├── triplets/                 Custom triplet overlays (e.g. macOS header fixes)
+└── ports/                    Custom/patched vcpkg ports
 ```
 
 ## Makefile targets
@@ -225,9 +255,8 @@ parparchik/
 ```
 make help               Show all targets
 
-make vcpkg-setup        Set up vcpkg + sccache + fetch packages
-make vcpkg-sync         Sync vcpkg from upstream
-make sccache-install    Install sccache
+make sync               Download all deps into vcpkgproxy (online)
+make vcpkg-setup        Install packages from local cache (offline)
 
 make configure          Configure CMake (release)
 make configure-debug    Configure CMake (debug)
