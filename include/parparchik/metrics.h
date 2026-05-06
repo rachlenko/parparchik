@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <prometheus/gauge.h>
@@ -21,8 +22,8 @@ class Metrics {
 
  private:
   std::shared_ptr<prometheus::Registry> registry_;
-  prometheus::Gauge& volume_files_public_;
-  prometheus::Gauge& volume_files_private_;
+  prometheus::Family<prometheus::Gauge>& volume_files_family_;
+  std::unordered_map<std::string, prometheus::Gauge*> volume_files_gauges_;
   prometheus::Gauge& uploads_per_week_;
   prometheus::Gauge& uploads_per_month_;
 };

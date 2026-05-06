@@ -51,56 +51,59 @@ bool IsWithin(const std::string& timestamp,
 
 Metrics::Metrics()
     : registry_(std::make_shared<prometheus::Registry>()),
-      volume_files_public_(
+      volume_files_family_(
           prometheus::BuildGauge()
               .Name("parparchik_volume_files")
-              .Help("Current number of known files by volume visibility.")
-              .Register(*registry_)
-              .Add({{"volume", "public"}})),
-      volume_files_private_(
-          prometheus::BuildGauge()
-              .Name("parparchik_volume_files")
-              .Help("Current number of known files by volume visibility.")
-              .Register(*registry_)
-              .Add({{"volume", "private"}})),
+              .Help("Current number of known files by bucket.")
+              .Register(*registry_)),
       uploads_per_week_(
           prometheus::BuildGauge()
               .Name("parparchik_uploads_per_week")
-              .Help("Known uploaded file versions modified during the last 7 days.")
+              .Help(
+                  "Known uploaded file versions modified during the last 7 "
+                  "days.")
               .Register(*registry_)
               .Add({})),
       uploads_per_month_(
           prometheus::BuildGauge()
               .Name("parparchik_uploads_per_month")
-              .Help("Known uploaded file versions modified during the last 31 days.")
+              .Help(
+                  "Known uploaded file versions modified during the last 31 "
+                  "days.")
               .Register(*registry_)
               .Add({})) {}
 
 void Metrics::ObserveFiles(const std::vector<FileEntry>& entries) {
-  int public_files = 0;
-  int private_files = 0;
-  int uploads_per_week = 0;
-  int uploads_per_month = 0;
+  std::unordered_map<std::string, int> counts;
+  int week = 0;
+  int month = 0;
 
   for (const auto& entry : entries) {
-    if (entry.bucket_type == BucketType::kPublic) {
-      ++public_files;
-    } else {
-      ++private_files;
-    }
-
+    ++counts[entry.bucket_name];
     if (IsWithin(entry.last_modified, std::chrono::hours(24 * 7))) {
-      ++uploads_per_week;
+      ++week;
     }
     if (IsWithin(entry.last_modified, std::chrono::hours(24 * 31))) {
-      ++uploads_per_month;
+      ++month;
     }
   }
 
-  volume_files_public_.Set(public_files);
-  volume_files_private_.Set(private_files);
-  uploads_per_week_.Set(uploads_per_week);
-  uploads_per_month_.Set(uploads_per_month);
+  for (auto& [bucket, gauge] : volume_files_gauges_) {
+    gauge->Set(0);
+  }
+  for (const auto& [bucket, count] : counts) {
+    auto it = volume_files_gauges_.find(bucket);
+    if (it == volume_files_gauges_.end()) {
+      auto& gauge = volume_files_family_.Add({{"volume", bucket}});
+      volume_files_gauges_[bucket] = &gauge;
+      gauge.Set(count);
+    } else {
+      it->second->Set(count);
+    }
+  }
+
+  uploads_per_week_.Set(week);
+  uploads_per_month_.Set(month);
 }
 
 std::string Metrics::Render() const {

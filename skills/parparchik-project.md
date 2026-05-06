@@ -18,8 +18,8 @@ C++ S3, `nlohmann-json`, and `prometheus-cpp` via vcpkg.
 - `test/mock_s3_manifest_metrics_test.sh` — mock private/public metrics and
   manifest verification scenario.
 - `argocd_deployment.conf.example` — Argo CD/Kubernetes deployment starter.
-- `docs/` and `zensical.toml` — Zensical source site.
-- `docs/` — generated static site output.
+- `docs/` and `zensical.toml` — Zensical source site and generated static site output.
+- `docs/assets/logo.png` — project logo used in README and website.
 
 ## Standard workflow
 
@@ -61,7 +61,9 @@ make docs-site
   buckets, writes manifests, and then marks readiness healthy.
 - Manifest output shape is `{version, bucket_type, files}` where `files` stores
   `key`, `bucket`, `bucket_type`, `route`, `size`, and `last_modified`.
-- Public wins for duplicate keys in manifests or in real buckets.
+- Public wins for duplicate keys in manifests or in real buckets (default behavior).
+- `POST /relocate` reverses this: private wins when a file exists in both buckets.
+  It moves the registry entry between manifests and persists both.
 - On miss or stale route, the service checks public first and private second,
   serves the resolved object, updates memory, refreshes metrics, and persists
   both manifests.
@@ -82,13 +84,32 @@ at the same time:
 - `parparchik_uploads_per_week`
 - `parparchik_uploads_per_month`
 
+## REST API contract
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| GET | `/status` | Service health, bucket names, file count |
+| GET | `/redines`, `/readiness` | Readiness probe (503 until startup completes) |
+| GET | `/helthcheck`, `/healthcheck` | Liveness probe |
+| GET | `/list` | All registered files with bucket type and route |
+| GET | `/update?filename=<key>` | Locate file, repair manifests on miss (public wins) |
+| POST | `/relocate?filename=<key>` | Verify file, relocate between buckets (private wins on duplicate) |
+| GET | `/metrics` | Prometheus metrics |
+| GET | `/public/<key>` | 302 redirect to public S3 URL |
+| GET | `/private/<key>` | 302 redirect to presigned S3 URL |
+
 ## Documentation coverage contract
 
 When behavior changes, update all affected documentation surfaces:
 
-- `README.md` for quick start, public features, config, and Makefile command list.
+- `README.md` for quick start, public features, config, bucket setup guide, and Makefile command list.
 - `docs/index.md` for architecture, API, runtime flow, and feature overview.
-- `docs/operations.md` for build, run, config, S3 manifests, Kubernetes, Argo CD,
-  and tests.
+- `docs/operations.md` for build, run, config, bucket setup guide, S3 manifests,
+  Kubernetes, Argo CD, and tests.
 - `docs/monitoring.md` for Prometheus, Alertmanager, Grafana, and metric test evidence.
 - `docs/` by running `make docs-site` after source docs change.
+
+## External links
+
+- Website: https://rachlenko.github.io/parparchik/
+- Repository: https://github.com/rachlenko/parparchik

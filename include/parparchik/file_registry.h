@@ -11,11 +11,8 @@
 
 namespace parparchik {
 
-enum class BucketType { kPrivate, kPublic };
-
 struct FileEntry {
   std::string key;
-  BucketType bucket_type;
   std::string bucket_name;
   std::string route;
   int64_t size;
@@ -26,17 +23,15 @@ struct FileEntry {
 
 class FileRegistry {
  public:
-  FileRegistry(const std::string& public_bucket,
-               const std::string& private_bucket);
+  explicit FileRegistry(std::vector<std::string> buckets);
 
-  void LoadManifests(const std::string& public_manifest,
-                     const std::string& private_manifest);
+  void LoadManifests(
+      const std::vector<std::pair<std::string, std::string>>& manifests);
 
-  void RegisterFile(const std::string& key, BucketType type, int64_t size,
-                    const std::string& last_modified = "");
+  void RegisterFile(const std::string& key, const std::string& bucket,
+                    int64_t size, const std::string& last_modified = "");
 
-  void MoveToPublic(const std::string& key);
-  void MoveToPrivate(const std::string& key);
+  void MoveToBucket(const std::string& key, const std::string& bucket);
 
   void Remove(const std::string& key);
 
@@ -44,24 +39,24 @@ class FileRegistry {
   std::optional<FileEntry> LookupByRoute(const std::string& route) const;
 
   std::vector<FileEntry> ListAll() const;
-  std::vector<FileEntry> ListByBucket(BucketType type) const;
+  std::vector<FileEntry> ListByBucket(const std::string& bucket) const;
 
-  nlohmann::json ManifestForBucket(BucketType type) const;
+  nlohmann::json ManifestForBucket(const std::string& bucket) const;
 
   void Clear();
 
+  const std::vector<std::string>& buckets() const { return buckets_; }
+
  private:
-  static std::string BucketTypeToString(BucketType type);
-  static BucketType BucketTypeFromString(const std::string& value);
-  static std::string MakeRoute(const std::string& key, BucketType type);
-  static std::optional<FileEntry> EntryFromJson(
-      const nlohmann::json& item, BucketType type,
-      const std::string& public_bucket, const std::string& private_bucket);
+  int BucketPriority(const std::string& bucket) const;
+  static std::string MakeRoute(const std::string& key,
+                               const std::string& bucket);
+  static std::optional<FileEntry> EntryFromJson(const nlohmann::json& item,
+                                                const std::string& bucket);
 
   mutable std::mutex mu_;
   std::unordered_map<std::string, FileEntry> entries_;
-  std::string public_bucket_;
-  std::string private_bucket_;
+  std::vector<std::string> buckets_;
 };
 
 }  // namespace parparchik

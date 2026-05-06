@@ -248,6 +248,105 @@ make run-native
 
 ## Configuration
 
+### Step-by-step bucket setup
+
+#### Option A — AWS S3
+
+1. Create two S3 buckets in the AWS console or CLI:
+
+    ```bash
+    aws s3 mb s3://my-public-bucket --region us-east-1
+    aws s3 mb s3://my-private-bucket --region us-east-1
+    ```
+
+2. Make the public bucket publicly readable:
+
+    ```bash
+    aws s3api put-bucket-policy --bucket my-public-bucket --policy '{
+      "Version": "2012-10-17",
+      "Statement": [{
+        "Effect": "Allow",
+        "Principal": "*",
+        "Action": "s3:GetObject",
+        "Resource": "arn:aws:s3:::my-public-bucket/*"
+      }]
+    }'
+    ```
+
+3. Keep the private bucket with default access (private). Parparchik generates
+   presigned URLs for private files automatically.
+
+4. Create an IAM user or role with read/write access to both buckets. The
+   minimum policy is:
+
+    ```json
+    {
+      "Version": "2012-10-17",
+      "Statement": [{
+        "Effect": "Allow",
+        "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject",
+                   "s3:ListBucket", "s3:HeadObject"],
+        "Resource": [
+          "arn:aws:s3:::my-public-bucket", "arn:aws:s3:::my-public-bucket/*",
+          "arn:aws:s3:::my-private-bucket", "arn:aws:s3:::my-private-bucket/*"
+        ]
+      }]
+    }
+    ```
+
+5. Configure parparchik:
+
+    ```bash
+    export PARPARCHIK_PUBLIC_BUCKET=my-public-bucket
+    export PARPARCHIK_PRIVATE_BUCKET=my-private-bucket
+    export AWS_REGION=us-east-1
+    export AWS_ACCESS_KEY_ID=AKIA...
+    export AWS_SECRET_ACCESS_KEY=...
+    ```
+
+6. Start the service:
+
+    ```bash
+    make run-native
+    ```
+
+7. Verify both buckets are connected:
+
+    ```bash
+    curl http://localhost:8080/status
+    ```
+
+#### Option B — MinIO (local development)
+
+1. Start MinIO and parparchik with Docker Compose:
+
+    ```bash
+    make run-docker
+    ```
+
+    This automatically creates `public-bucket` and `private-bucket` in MinIO
+    and configures parparchik to use them.
+
+2. Open the MinIO console at http://localhost:9001 (user: `minioadmin`,
+   password: `minioadmin`) to inspect buckets.
+
+3. Verify the service:
+
+    ```bash
+    curl http://localhost:8080/status
+    ```
+
+4. Upload a test file and confirm routing:
+
+    ```bash
+    mc alias set local http://localhost:9000 minioadmin minioadmin
+    mc cp testfile.txt local/public-bucket/testfile.txt
+    curl http://localhost:8080/update?filename=testfile.txt
+    curl -L http://localhost:8080/public/testfile.txt
+    ```
+
+### Environment variables
+
 All configuration is via environment variables:
 
 | Variable | Required | Default | Description |

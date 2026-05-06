@@ -10,8 +10,7 @@ namespace parparchik {
 
 Server::Server(Config config) : config_(std::move(config)) {
   s3_ = std::make_unique<S3Client>(config_.aws_region, config_.s3_endpoint);
-  registry_ = std::make_unique<FileRegistry>(config_.public_bucket,
-                                             config_.private_bucket);
+  registry_ = std::make_unique<FileRegistry>(config_.buckets);
   metrics_ = std::make_unique<Metrics>();
 }
 
@@ -75,40 +74,29 @@ void Server::RegisterRoutes() {
                HandleRelocate(req, res);
              });
 
-  http_.Get(R"(/public/(.+))",
-            [this](const httplib::Request& req, httplib::Response& res) {
-              HandleFileDownload(req, res);
-            });
-
-  http_.Get(R"(/private/(.+))",
-            [this](const httplib::Request& req, httplib::Response& res) {
-              HandleFileDownload(req, res);
-            });
+  for (const auto& bucket : config_.buckets) {
+    std::string pattern = "/" + bucket + "/(.+)";
+    http_.Get(pattern,
+              [this](const httplib::Request& req, httplib::Response& res) {
+                HandleFileDownload(req, res);
+              });
+  }
 }
 
 void Server::SyncRegistry() {
   std::unordered_set<std::string> seen;
 
-  auto public_objects = s3_->ListObjects(config_.public_bucket);
-  for (const auto& obj : public_objects) {
-    if (obj.key == config_.registry_manifest_key) {
-      continue;
+  for (const auto& bucket : config_.buckets) {
+    auto objects = s3_->ListObjects(bucket);
+    for (const auto& obj : objects) {
+      if (obj.key == config_.registry_manifest_key) {
+        continue;
+      }
+      if (!seen.contains(obj.key)) {
+        registry_->RegisterFile(obj.key, bucket, obj.size, obj.last_modified);
+      }
+      seen.insert(obj.key);
     }
-    seen.insert(obj.key);
-    registry_->RegisterFile(obj.key, BucketType::kPublic, obj.size,
-                            obj.last_modified);
-  }
-
-  auto private_objects = s3_->ListObjects(config_.private_bucket);
-  for (const auto& obj : private_objects) {
-    if (obj.key == config_.registry_manifest_key) {
-      continue;
-    }
-    if (!seen.contains(obj.key)) {
-      registry_->RegisterFile(obj.key, BucketType::kPrivate, obj.size,
-                              obj.last_modified);
-    }
-    seen.insert(obj.key);
   }
 
   for (const auto& entry : registry_->ListAll()) {
@@ -120,21 +108,26 @@ void Server::SyncRegistry() {
   PersistRegistryManifests();
   RefreshMetrics();
 
-  std::cout << "Registry synced: " << public_objects.size() << " public, "
-            << private_objects.size() << " private objects" << std::endl;
+  std::cout << "Registry synced across " << config_.buckets.size()
+            << " buckets" << std::endl;
 }
 
 void Server::LoadRegistryManifests() {
-  std::string public_manifest;
-  std::string private_manifest;
+  std::vector<std::pair<std::string, std::string>> manifests;
+  bool all_present = true;
 
-  const bool has_public_manifest = s3_->TryGetObjectContent(
-      config_.public_bucket, config_.registry_manifest_key, &public_manifest);
-  const bool has_private_manifest = s3_->TryGetObjectContent(
-      config_.private_bucket, config_.registry_manifest_key, &private_manifest);
+  for (const auto& bucket : config_.buckets) {
+    std::string content;
+    bool found = s3_->TryGetObjectContent(
+        bucket, config_.registry_manifest_key, &content);
+    manifests.emplace_back(bucket, content);
+    if (!found) {
+      all_present = false;
+    }
+  }
 
-  registry_->LoadManifests(public_manifest, private_manifest);
-  if (!has_public_manifest || !has_private_manifest) {
+  registry_->LoadManifests(manifests);
+  if (!all_present) {
     BackfillRegistryFromBuckets();
   }
 
@@ -143,83 +136,67 @@ void Server::LoadRegistryManifests() {
 }
 
 void Server::BackfillRegistryFromBuckets() {
-  std::unordered_set<std::string> public_keys;
+  std::unordered_set<std::string> seen;
 
-  for (const auto& object : s3_->ListObjects(config_.public_bucket)) {
-    if (object.key == config_.registry_manifest_key) {
-      continue;
+  for (const auto& bucket : config_.buckets) {
+    for (const auto& object : s3_->ListObjects(bucket)) {
+      if (object.key == config_.registry_manifest_key) {
+        continue;
+      }
+      if (!seen.contains(object.key)) {
+        registry_->RegisterFile(object.key, bucket, object.size,
+                                object.last_modified);
+      }
+      seen.insert(object.key);
     }
-    public_keys.insert(object.key);
-    registry_->RegisterFile(object.key, BucketType::kPublic, object.size,
-                            object.last_modified);
-  }
-
-  for (const auto& object : s3_->ListObjects(config_.private_bucket)) {
-    if (object.key == config_.registry_manifest_key ||
-        public_keys.contains(object.key)) {
-      continue;
-    }
-    registry_->RegisterFile(object.key, BucketType::kPrivate, object.size,
-                            object.last_modified);
   }
 }
 
 void Server::ReconcileRegistryWithBuckets() {
   for (const auto& entry : registry_->ListAll()) {
-    const auto public_object = s3_->HeadObject(config_.public_bucket, entry.key);
-    const auto private_object = s3_->HeadObject(config_.private_bucket, entry.key);
-
-    if (public_object.has_value()) {
-      registry_->RegisterFile(entry.key, BucketType::kPublic,
-                              public_object->size,
-                              public_object->last_modified);
-    } else if (private_object.has_value()) {
-      registry_->RegisterFile(entry.key, BucketType::kPrivate,
-                              private_object->size,
-                              private_object->last_modified);
-    } else {
+    bool found = false;
+    for (const auto& bucket : config_.buckets) {
+      const auto object = s3_->HeadObject(bucket, entry.key);
+      if (object.has_value()) {
+        registry_->RegisterFile(entry.key, bucket, object->size,
+                                object->last_modified);
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
       registry_->Remove(entry.key);
     }
   }
 }
 
 void Server::PersistRegistryManifests() {
-  const std::string public_manifest =
-      registry_->ManifestForBucket(BucketType::kPublic).dump(2);
-  const std::string private_manifest =
-      registry_->ManifestForBucket(BucketType::kPrivate).dump(2);
-
-  if (!s3_->PutObjectContent(config_.public_bucket, config_.registry_manifest_key,
-                             public_manifest, "application/json")) {
-    throw std::runtime_error("Failed to write public registry manifest to S3");
-  }
-  if (!s3_->PutObjectContent(config_.private_bucket,
-                             config_.registry_manifest_key, private_manifest,
-                             "application/json")) {
-    throw std::runtime_error("Failed to write private registry manifest to S3");
+  for (const auto& bucket : config_.buckets) {
+    const std::string manifest =
+        registry_->ManifestForBucket(bucket).dump(2);
+    if (!s3_->PutObjectContent(bucket, config_.registry_manifest_key,
+                               manifest, "application/json")) {
+      throw std::runtime_error(
+          "Failed to write registry manifest to S3 bucket: " + bucket);
+    }
   }
 }
 
 std::optional<FileEntry> Server::ResolveMissingFile(const std::string& key) {
-  const auto public_object = s3_->HeadObject(config_.public_bucket, key);
-  const auto private_object = s3_->HeadObject(config_.private_bucket, key);
-
-  if (!public_object.has_value() && !private_object.has_value()) {
-    registry_->Remove(key);
-    PersistRegistryManifests();
-    RefreshMetrics();
-    return std::nullopt;
+  for (const auto& bucket : config_.buckets) {
+    const auto object = s3_->HeadObject(bucket, key);
+    if (object.has_value()) {
+      registry_->RegisterFile(key, bucket, object->size, object->last_modified);
+      PersistRegistryManifests();
+      RefreshMetrics();
+      return registry_->Lookup(key);
+    }
   }
 
-  const BucketType type = public_object.has_value() ? BucketType::kPublic
-                                                    : BucketType::kPrivate;
-  const auto& object = public_object.has_value() ? *public_object
-                                                 : *private_object;
-
-  registry_->RegisterFile(key, type, object.size, object.last_modified);
+  registry_->Remove(key);
   PersistRegistryManifests();
   RefreshMetrics();
-  return registry_->Lookup(key);
+  return std::nullopt;
 }
 
 std::optional<FileEntry> Server::ResolveRoute(const std::string& route) {
@@ -232,13 +209,11 @@ std::optional<FileEntry> Server::ResolveRoute(const std::string& route) {
     return ResolveMissingFile(entry->key);
   }
 
-  const std::string public_prefix = "/public/";
-  const std::string private_prefix = "/private/";
-  if (route.starts_with(public_prefix)) {
-    return ResolveMissingFile(route.substr(public_prefix.size()));
-  }
-  if (route.starts_with(private_prefix)) {
-    return ResolveMissingFile(route.substr(private_prefix.size()));
+  for (const auto& bucket : config_.buckets) {
+    const std::string prefix = "/" + bucket + "/";
+    if (route.starts_with(prefix)) {
+      return ResolveMissingFile(route.substr(prefix.size()));
+    }
   }
   return std::nullopt;
 }
@@ -247,10 +222,17 @@ void Server::RefreshMetrics() { metrics_->ObserveFiles(registry_->ListAll()); }
 
 void Server::HandleStatus(const httplib::Request& /*req*/,
                            httplib::Response& res) {
+  nlohmann::json bucket_list = nlohmann::json::array();
+  for (const auto& bucket : config_.buckets) {
+    bucket_list.push_back({
+        {"name", bucket},
+        {"public", config_.IsBucketPublic(bucket)},
+    });
+  }
+
   nlohmann::json response = {
       {"status", "ok"},
-      {"public_bucket", config_.public_bucket},
-      {"private_bucket", config_.private_bucket},
+      {"buckets", bucket_list},
       {"region", config_.aws_region},
       {"registry_manifest_key", config_.registry_manifest_key},
       {"ready", ready_.load()},
@@ -348,10 +330,21 @@ void Server::HandleRelocate(const httplib::Request& req,
 
   const std::string filename = req.get_param_value("filename");
 
-  const auto public_object = s3_->HeadObject(config_.public_bucket, filename);
-  const auto private_object = s3_->HeadObject(config_.private_bucket, filename);
+  // Check all buckets; last match wins (reverse priority for relocate).
+  std::string target_bucket;
+  S3Object target_object;
+  int found_count = 0;
 
-  if (!public_object.has_value() && !private_object.has_value()) {
+  for (const auto& bucket : config_.buckets) {
+    const auto object = s3_->HeadObject(bucket, filename);
+    if (object.has_value()) {
+      target_bucket = bucket;
+      target_object = *object;
+      ++found_count;
+    }
+  }
+
+  if (found_count == 0) {
     registry_->Remove(filename);
     try {
       PersistRegistryManifests();
@@ -367,30 +360,13 @@ void Server::HandleRelocate(const httplib::Request& req,
     return;
   }
 
-  // Private bucket takes precedence when file exists in both buckets.
-  const bool in_both = public_object.has_value() && private_object.has_value();
-  BucketType target_type;
-  const S3Object* target_object;
-  if (private_object.has_value()) {
-    target_type = BucketType::kPrivate;
-    target_object = &*private_object;
-  } else {
-    target_type = BucketType::kPublic;
-    target_object = &*public_object;
-  }
-
   const auto previous = registry_->Lookup(filename);
 
-  // RegisterFile guards against public→private downgrade, so move explicitly.
-  if (previous.has_value() && previous->bucket_type != target_type) {
-    if (target_type == BucketType::kPrivate) {
-      registry_->MoveToPrivate(filename);
-    } else {
-      registry_->MoveToPublic(filename);
-    }
+  if (previous.has_value() && previous->bucket_name != target_bucket) {
+    registry_->MoveToBucket(filename, target_bucket);
   }
-  registry_->RegisterFile(filename, target_type, target_object->size,
-                           target_object->last_modified);
+  registry_->RegisterFile(filename, target_bucket, target_object.size,
+                           target_object.last_modified);
 
   try {
     PersistRegistryManifests();
@@ -408,15 +384,15 @@ void Server::HandleRelocate(const httplib::Request& req,
 
   auto entry = registry_->Lookup(filename);
   nlohmann::json response = {{"status", "ok"}, {"file", entry->ToJson()}};
-  if (previous.has_value() && previous->bucket_type != target_type) {
-    response["relocated_from"] =
-        previous->bucket_type == BucketType::kPublic ? "public" : "private";
-    response["relocated_to"] =
-        target_type == BucketType::kPublic ? "public" : "private";
+  if (previous.has_value() && previous->bucket_name != target_bucket) {
+    response["relocated_from"] = previous->bucket_name;
+    response["relocated_to"] = target_bucket;
   }
-  if (in_both) {
+  if (found_count > 1) {
     response["duplicate"] = true;
-    response["note"] = "file exists in both buckets, private takes precedence";
+    response["note"] =
+        "file exists in multiple buckets, last configured bucket takes "
+        "precedence";
   }
   res.set_content(response.dump(2), "application/json");
 }
@@ -433,9 +409,8 @@ void Server::HandleFileDownload(const httplib::Request& req,
     return;
   }
 
-  if (entry->bucket_type == BucketType::kPublic) {
-    std::string url =
-        s3_->GetPublicUrl(entry->bucket_name, entry->key);
+  if (config_.IsBucketPublic(entry->bucket_name)) {
+    std::string url = s3_->GetPublicUrl(entry->bucket_name, entry->key);
     res.set_redirect(url, 302);
   } else {
     std::string url =
