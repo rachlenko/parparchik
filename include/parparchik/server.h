@@ -37,6 +37,7 @@ class Server {
   void HandleMetrics(const httplib::Request& req, httplib::Response& res);
   void HandleList(const httplib::Request& req, httplib::Response& res);
   void HandleUpdate(const httplib::Request& req, httplib::Response& res);
+  void HandleRelocate(const httplib::Request& req, httplib::Response& res);
   void HandleFileDownload(const httplib::Request& req, httplib::Response& res);
 
   Config config_;

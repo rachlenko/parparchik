@@ -66,6 +66,7 @@ MinIO console is at http://localhost:9001 (user: `minioadmin`, password: `minioa
 | GET    | `/helthcheck`              | Kubernetes liveness probe                          |
 | GET    | `/list`                    | All registered files with bucket type and route    |
 | GET    | `/update?filename=<name>`  | Sync and return current location of a file         |
+| POST   | `/relocate?filename=<name>`| Verify file, relocate between buckets, return ok/fail |
 | GET    | `/metrics`                 | Prometheus metrics for file volumes and uploads    |
 | GET    | `/public/<key>`            | 302 redirect to public S3 URL                      |
 | GET    | `/private/<key>`           | 302 redirect to presigned S3 URL (1h expiry)       |

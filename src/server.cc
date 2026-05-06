@@ -70,6 +70,11 @@ void Server::RegisterRoutes() {
               HandleUpdate(req, res);
             });
 
+  http_.Post("/relocate",
+             [this](const httplib::Request& req, httplib::Response& res) {
+               HandleRelocate(req, res);
+             });
+
   http_.Get(R"(/public/(.+))",
             [this](const httplib::Request& req, httplib::Response& res) {
               HandleFileDownload(req, res);
@@ -329,6 +334,90 @@ void Server::HandleUpdate(const httplib::Request& req,
       {"message", "file located"},
       {"file", entry->ToJson()},
   };
+  res.set_content(response.dump(2), "application/json");
+}
+
+void Server::HandleRelocate(const httplib::Request& req,
+                            httplib::Response& res) {
+  if (!req.has_param("filename")) {
+    nlohmann::json error = {{"error", "missing 'filename' query parameter"}};
+    res.status = 400;
+    res.set_content(error.dump(2), "application/json");
+    return;
+  }
+
+  const std::string filename = req.get_param_value("filename");
+
+  const auto public_object = s3_->HeadObject(config_.public_bucket, filename);
+  const auto private_object = s3_->HeadObject(config_.private_bucket, filename);
+
+  if (!public_object.has_value() && !private_object.has_value()) {
+    registry_->Remove(filename);
+    try {
+      PersistRegistryManifests();
+    } catch (...) {}
+    RefreshMetrics();
+    nlohmann::json response = {
+        {"status", "fail"},
+        {"error", "file not found in any bucket"},
+        {"filename", filename},
+    };
+    res.status = 404;
+    res.set_content(response.dump(2), "application/json");
+    return;
+  }
+
+  // Private bucket takes precedence when file exists in both buckets.
+  const bool in_both = public_object.has_value() && private_object.has_value();
+  BucketType target_type;
+  const S3Object* target_object;
+  if (private_object.has_value()) {
+    target_type = BucketType::kPrivate;
+    target_object = &*private_object;
+  } else {
+    target_type = BucketType::kPublic;
+    target_object = &*public_object;
+  }
+
+  const auto previous = registry_->Lookup(filename);
+
+  // RegisterFile guards against public→private downgrade, so move explicitly.
+  if (previous.has_value() && previous->bucket_type != target_type) {
+    if (target_type == BucketType::kPrivate) {
+      registry_->MoveToPrivate(filename);
+    } else {
+      registry_->MoveToPublic(filename);
+    }
+  }
+  registry_->RegisterFile(filename, target_type, target_object->size,
+                           target_object->last_modified);
+
+  try {
+    PersistRegistryManifests();
+  } catch (const std::exception& e) {
+    nlohmann::json response = {
+        {"status", "fail"},
+        {"error", "failed to persist manifests"},
+        {"filename", filename},
+    };
+    res.status = 500;
+    res.set_content(response.dump(2), "application/json");
+    return;
+  }
+  RefreshMetrics();
+
+  auto entry = registry_->Lookup(filename);
+  nlohmann::json response = {{"status", "ok"}, {"file", entry->ToJson()}};
+  if (previous.has_value() && previous->bucket_type != target_type) {
+    response["relocated_from"] =
+        previous->bucket_type == BucketType::kPublic ? "public" : "private";
+    response["relocated_to"] =
+        target_type == BucketType::kPublic ? "public" : "private";
+  }
+  if (in_both) {
+    response["duplicate"] = true;
+    response["note"] = "file exists in both buckets, private takes precedence";
+  }
   res.set_content(response.dump(2), "application/json");
 }
 

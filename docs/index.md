@@ -73,6 +73,7 @@ flowchart LR
 | `/status` | Configuration, readiness, and file count. |
 | `/list` | Current in-memory registry entries. |
 | `/update?filename=<key>` | Resolve a key and repair manifests on miss/stale state. |
+| `POST /relocate?filename=<key>` | Verify file location, relocate registry entry between buckets. Private wins on duplicate. |
 | `/metrics` | Prometheus metrics. |
 | `/public/<key>` | Redirect to public S3 URL. |
 | `/private/<key>` | Redirect to presigned S3 URL, or public URL if public wins. |
