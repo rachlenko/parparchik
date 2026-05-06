@@ -4,6 +4,10 @@ icon: lucide/box
 
 # parparchik
 
+<p align="center">
+  <img src="assets/logo.png" alt="parparchik logo" width="200">
+</p>
+
 `parparchik` is a C++20 service that routes versioned files from two S3 buckets:
 public and private. Public files are redirected to public S3 URLs. Private files
 are redirected to short-lived presigned URLs.

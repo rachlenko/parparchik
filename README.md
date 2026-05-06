@@ -1,5 +1,11 @@
 # parparchik
 
+<p align="center">
+  <img src="docs/assets/logo.png" alt="parparchik logo" width="200">
+</p>
+
+[![Documentation](https://img.shields.io/badge/docs-rachlenko.github.io%2Fparparchik-blue)](https://rachlenko.github.io/parparchik/)
+
 S3 file routing web service. Exposes files from public and private S3 buckets
 behind dynamic HTTP routes. When a file moves between buckets, its route
 updates automatically — clients always hit the same logical endpoint.

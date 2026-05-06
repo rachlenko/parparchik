@@ -1,6 +1,9 @@
 [project]
 site_name = "parparchik"
 site_dir = "docs"
+site_url = "https://rachlenko.github.io/parparchik/"
+repo_url = "https://github.com/rachlenko/parparchik"
+repo_name = "rachlenko/parparchik"
 site_description = "S3 file routing service documentation, operations, and monitoring guides."
 site_author = "parparchik maintainers"
 copyright = "Copyright &copy; 2026 parparchik maintainers"
@@ -27,7 +30,7 @@ features = [
 ]
 
 [project.theme.icon]
-logo = "lucide/cloud"
+logo = "assets/logo.png"
 
 [[project.theme.palette]]
 scheme = "default"
