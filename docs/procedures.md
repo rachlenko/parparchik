@@ -11,7 +11,7 @@ icon: lucide/list-checks
 3. Keep operational details in `docs/operations.md`.
 4. Keep monitoring details in `docs/monitoring.md`.
 5. Update `skills/parparchik-project.md` when workflows or contracts change.
-6. Run `make docs-check`, then `make docs-site` to refresh `site/`.
+6. Run `make docs-check`, then `make docs-site` to refresh `docs/`.
 
 ## Release readiness checklist
 
@@ -21,7 +21,7 @@ icon: lucide/list-checks
 - `make test-mock-metrics` passes with Docker and `mc` available.
 - `prometheus.conf.example`, `alertmanager.conf.example`, and
   `grafana-parparchik-desktop.example` match exported metric names.
-- README, docs, and generated `site/` describe the S3 JSON manifest registry.
+- README, docs, and generated `docs/` describe the S3 JSON manifest registry.
 
 ## Coverage checklist
 

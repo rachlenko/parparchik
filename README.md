@@ -328,8 +328,7 @@ parparchik/
 │   ├── s3_client.cc
 │   ├── file_registry.cc
 │   └── server.cc
-├── docs/                    Zensical source documentation
-├── site/                    Generated static documentation site
+├── docs/                    Zensical source documentation and generated site
 ├── procedures/              Maintenance procedures
 ├── skills/                  Project-specific workflow notes
 └── test/
@@ -380,7 +379,7 @@ make list               List registered files
 make metrics            Print Prometheus metrics
 
 make docs-check         Validate Zensical documentation build
-make docs-site          Build static documentation into site/
+make docs-site          Build static documentation into docs/
 make docs-serve         Serve docs locally at localhost:8000
 make docs-procedure     Show documentation/skills update procedure
 ```

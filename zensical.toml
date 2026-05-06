@@ -1,5 +1,6 @@
 [project]
 site_name = "parparchik"
+site_dir = "docs"
 site_description = "S3 file routing service documentation, operations, and monitoring guides."
 site_author = "parparchik maintainers"
 copyright = "Copyright &copy; 2026 parparchik maintainers"

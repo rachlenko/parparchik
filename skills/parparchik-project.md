@@ -19,7 +19,7 @@ C++ S3, `nlohmann-json`, and `prometheus-cpp` via vcpkg.
   manifest verification scenario.
 - `argocd_deployment.conf.example` — Argo CD/Kubernetes deployment starter.
 - `docs/` and `zensical.toml` — Zensical source site.
-- `site/` — generated static site output.
+- `docs/` — generated static site output.
 
 ## Standard workflow
 
@@ -91,4 +91,4 @@ When behavior changes, update all affected documentation surfaces:
 - `docs/operations.md` for build, run, config, S3 manifests, Kubernetes, Argo CD,
   and tests.
 - `docs/monitoring.md` for Prometheus, Alertmanager, Grafana, and metric test evidence.
-- `site/` by running `make docs-site` after source docs change.
+- `docs/` by running `make docs-site` after source docs change.

@@ -162,7 +162,7 @@ docs-check: ## Validate Zensical documentation build
 	$(ZENSICAL) build --strict --clean
 
 .PHONY: docs-site
-docs-site: ## Build static documentation into site/
+docs-site: ## Build static documentation into docs/
 	$(ZENSICAL) build --clean
 
 .PHONY: docs-serve

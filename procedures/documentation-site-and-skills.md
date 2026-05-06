@@ -17,7 +17,7 @@ change.
 3. Update `skills/parparchik-project.md` with agent/operator workflow guidance.
 4. Update `Makefile` targets if new workflows need one-command execution.
 5. Run `make docs-check`.
-6. Run `make docs-site` to generate `site/`.
+6. Run `make docs-site` to generate `docs/`.
 7. Review `git status --short` and confirm only relevant files changed.
 
 ## Zensical commands
@@ -28,6 +28,6 @@ make docs-site
 make docs-serve
 ```
 
-`site/` is the generated static output. Rebuild it from `docs/` and
+`docs/` is the generated static output. Rebuild it from the source docs and
 `zensical.toml`; do not edit generated HTML by hand.
 
