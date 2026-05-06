@@ -11,6 +11,7 @@
 #include <aws/s3/model/GetObjectRequest.h>
 #include <aws/s3/model/HeadObjectRequest.h>
 #include <aws/s3/model/ListObjectsV2Request.h>
+#include <aws/s3/model/PutObjectRequest.h>
 
 namespace parparchik {
 
@@ -70,12 +71,26 @@ std::vector<S3Object> S3Client::ListObjects(
 
 bool S3Client::ObjectExists(const std::string& bucket,
                             const std::string& key) const {
+  return HeadObject(bucket, key).has_value();
+}
+
+std::optional<S3Object> S3Client::HeadObject(const std::string& bucket,
+                                             const std::string& key) const {
   Aws::S3::Model::HeadObjectRequest request;
   request.SetBucket(bucket);
   request.SetKey(key);
 
   auto outcome = client_.HeadObject(request);
-  return outcome.IsSuccess();
+  if (!outcome.IsSuccess()) {
+    return std::nullopt;
+  }
+
+  return S3Object{
+      .key = key,
+      .size = outcome.GetResult().GetContentLength(),
+      .last_modified = outcome.GetResult().GetLastModified().ToGmtString(
+          Aws::Utils::DateFormat::ISO_8601),
+  };
 }
 
 std::string S3Client::GetObjectContent(const std::string& bucket,
@@ -94,6 +109,41 @@ std::string S3Client::GetObjectContent(const std::string& bucket,
   std::ostringstream oss;
   oss << outcome.GetResult().GetBody().rdbuf();
   return oss.str();
+}
+
+bool S3Client::TryGetObjectContent(const std::string& bucket,
+                                   const std::string& key,
+                                   std::string* content) const {
+  Aws::S3::Model::GetObjectRequest request;
+  request.SetBucket(bucket);
+  request.SetKey(key);
+
+  auto outcome = client_.GetObject(request);
+  if (!outcome.IsSuccess()) {
+    return false;
+  }
+
+  std::ostringstream oss;
+  oss << outcome.GetResult().GetBody().rdbuf();
+  *content = oss.str();
+  return true;
+}
+
+bool S3Client::PutObjectContent(const std::string& bucket,
+                                const std::string& key,
+                                const std::string& content,
+                                const std::string& content_type) const {
+  Aws::S3::Model::PutObjectRequest request;
+  request.SetBucket(bucket);
+  request.SetKey(key);
+  request.SetContentType(content_type);
+
+  auto body = Aws::MakeShared<Aws::StringStream>("parparchik-put-object");
+  *body << content;
+  request.SetBody(body);
+
+  auto outcome = client_.PutObject(request);
+  return outcome.IsSuccess();
 }
 
 bool S3Client::CopyObject(const std::string& src_bucket,

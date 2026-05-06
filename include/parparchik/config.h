@@ -9,6 +9,7 @@ namespace parparchik {
 struct Config {
   std::string aws_region = "us-east-1";
   std::string s3_endpoint;
+  std::string registry_manifest_key = ".parparchik/files.json";
   std::string public_bucket;
   std::string private_bucket;
   std::string host = "0.0.0.0";

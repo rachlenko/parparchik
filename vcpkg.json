@@ -6,6 +6,7 @@
   "dependencies": [
     "cpp-httplib",
     "nlohmann-json",
+    "prometheus-cpp",
     {
       "name": "aws-sdk-cpp",
       "features": ["s3"]

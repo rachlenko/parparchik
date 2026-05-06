@@ -1,0 +1,151 @@
+# Example Argo CD Application for parparchik.
+#
+# Usage:
+#   1. Replace repoURL, targetRevision, image, bucket names, and AWS settings.
+#   2. Commit this file or copy it into your Argo CD app-of-apps repository.
+#   3. Apply with: kubectl apply -f argocd_deployment.conf.example
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: parparchik
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: parparchik
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/example/parparchik-gitops.git
+    targetRevision: main
+    path: overlays/prod/parparchik
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: parparchik
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PruneLast=true
+---
+# Example manifests for source.path above.
+# Put the documents below into overlays/prod/parparchik/ in your GitOps repo.
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: parparchik
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: parparchik-config
+  namespace: parparchik
+data:
+  PARPARCHIK_PUBLIC_BUCKET: public-bucket
+  PARPARCHIK_PRIVATE_BUCKET: private-bucket
+  PARPARCHIK_REGISTRY_MANIFEST_KEY: .parparchik/files.json
+  AWS_REGION: us-east-1
+  PARPARCHIK_HOST: "0.0.0.0"
+  PARPARCHIK_PORT: "8080"
+  # Leave empty for AWS S3. Set for MinIO or another S3-compatible endpoint.
+  S3_ENDPOINT: ""
+  S3_EXTERNAL_ENDPOINT: ""
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: parparchik-aws-credentials
+  namespace: parparchik
+type: Opaque
+stringData:
+  # Prefer IRSA/Pod Identity in production. Keep these empty or remove the Secret
+  # when credentials are provided by the Kubernetes service account.
+  AWS_ACCESS_KEY_ID: "replace-me"
+  AWS_SECRET_ACCESS_KEY: "replace-me"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: parparchik
+  namespace: parparchik
+  labels:
+    app.kubernetes.io/name: parparchik
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: parparchik
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: parparchik
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /metrics
+        prometheus.io/port: "8080"
+    spec:
+      serviceAccountName: parparchik
+      containers:
+        - name: parparchik
+          image: ghcr.io/example/parparchik:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: parparchik-config
+            - secretRef:
+                name: parparchik-aws-credentials
+                optional: true
+          readinessProbe:
+            httpGet:
+              path: /redines
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /helthcheck
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: parparchik
+  namespace: parparchik
+  labels:
+    app.kubernetes.io/name: parparchik
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: parparchik
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: parparchik
+  namespace: parparchik
+  annotations:
+    # For AWS EKS IRSA, uncomment and set your role ARN:
+    # eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/parparchik
+    parparchik.example/replace: set-service-account-iam-role-here

@@ -32,6 +32,8 @@ Config Config::FromEnv() {
   config.private_bucket = RequireEnv("PARPARCHIK_PRIVATE_BUCKET");
   config.aws_region = GetEnvOr("AWS_REGION", "us-east-1");
   config.s3_endpoint = GetEnvOr("S3_ENDPOINT", "");
+  config.registry_manifest_key =
+      GetEnvOr("PARPARCHIK_REGISTRY_MANIFEST_KEY", ".parparchik/files.json");
   config.host = GetEnvOr("PARPARCHIK_HOST", "0.0.0.0");
 
   std::string port_str = GetEnvOr("PARPARCHIK_PORT", "8080");

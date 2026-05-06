@@ -12,6 +12,7 @@ VCPKG_TOOLCHAIN:= $(VCPKG_ROOT)/scripts/buildsystems/vcpkg.cmake
 BUILD_DIR      := build
 TRIPLET_OVERLAY:= $(VCPKGPROXY_DIR)/triplets
 MC             ?= mc
+ZENSICAL       ?= uvx zensical
 
 # Point vcpkg at the local proxy for all downloads and binary caches.
 # After `make sync`, no network access is needed.
@@ -127,6 +128,15 @@ test-all: docker-up ## Start containers and run e2e tests
 	done
 	MC=$(MC) ./test/e2e_test.sh
 
+.PHONY: test-mock-metrics
+test-mock-metrics: docker-up ## Run mock S3 manifest/Prometheus metrics scenario
+	@echo "Waiting for services..."
+	@for i in $$(seq 1 60); do \
+		curl -sf http://localhost:8080/helthcheck >/dev/null 2>&1 && break; \
+		sleep 1; \
+	done
+	MC=$(MC) ./test/mock_s3_manifest_metrics_test.sh
+
 # ──────────────────────────────────────────────
 #  Status / Health
 # ──────────────────────────────────────────────
@@ -138,6 +148,30 @@ status: ## Check service status
 .PHONY: list
 list: ## List all registered files
 	@curl -sf http://localhost:8080/list | python3 -m json.tool 2>/dev/null || echo "Service not running"
+
+.PHONY: metrics
+metrics: ## Print Prometheus metrics
+	@curl -sf http://localhost:8080/metrics || echo "Service not running"
+
+# ──────────────────────────────────────────────
+#  Documentation / static site
+# ──────────────────────────────────────────────
+
+.PHONY: docs-check
+docs-check: ## Validate Zensical documentation build
+	$(ZENSICAL) build --strict --clean
+
+.PHONY: docs-site
+docs-site: ## Build static documentation into site/
+	$(ZENSICAL) build --clean
+
+.PHONY: docs-serve
+docs-serve: ## Serve documentation locally at localhost:8000
+	$(ZENSICAL) serve --dev-addr localhost:8000
+
+.PHONY: docs-procedure
+docs-procedure: ## Show documentation and skills update procedure
+	@cat procedures/documentation-site-and-skills.md
 
 # ──────────────────────────────────────────────
 #  Help

@@ -1,6 +1,7 @@
 #ifndef PARPARCHIK_S3_CLIENT_H_
 #define PARPARCHIK_S3_CLIENT_H_
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -23,8 +24,21 @@ class S3Client {
   bool ObjectExists(const std::string& bucket,
                     const std::string& key) const;
 
+  std::optional<S3Object> HeadObject(const std::string& bucket,
+                                     const std::string& key) const;
+
   std::string GetObjectContent(const std::string& bucket,
                                const std::string& key) const;
+
+  bool TryGetObjectContent(const std::string& bucket,
+                           const std::string& key,
+                           std::string* content) const;
+
+  bool PutObjectContent(const std::string& bucket,
+                        const std::string& key,
+                        const std::string& content,
+                        const std::string& content_type =
+                            "application/octet-stream") const;
 
   bool CopyObject(const std::string& src_bucket,
                   const std::string& src_key,

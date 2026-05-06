@@ -8,23 +8,22 @@ updates automatically — clients always hit the same logical endpoint.
 
 ```
 ┌─────────────┐       ┌──────────────────┐       ┌──────────────┐
-│   Client     │──────▶│   parparchik      │──────▶│  S3 / MinIO  │
-│  (curl/app)  │◀──302─│   :8080           │       │  :9000       │
+│   Client    │──────▶│   parparchik     │──────▶│  S3 / MinIO  │
+│  (curl/app) │◀──302─│   :8080          │       │  buckets     │
 └─────────────┘       └──────────────────┘       └──────────────┘
                           │                         ▲
-                          │  FileRegistry            │
-                          │  tracks bucket_type      │
-                          │  per file and rewrites   │
-                          │  routes on sync          │
-                          └─────────────────────────┘
+                          └──── read/write JSON ────┘
+                               `.parparchik/files.json`
 ```
 
 **File in public bucket** → route is `/public/<key>` → redirect to public S3 URL.
 
 **File in private bucket** → route is `/private/<key>` → redirect to presigned URL.
 
-When a file moves from one bucket to the other, the registry detects the change
-on the next request and updates the route.
+The in-memory registry is loaded from JSON manifests stored in both buckets.
+When a requested key is missing or stale, the service checks the real S3 objects,
+serves the found file, and repairs the public/private manifests. If the same key
+exists in both buckets, the public bucket wins.
 
 ## Quick start (Docker)
 
@@ -37,8 +36,14 @@ make run-docker
 # Run the full e2e test suite (18 assertions)
 make test-all MC=/path/to/mc
 
+# Run mock S3 manifest/Prometheus counter scenario
+make test-mock-metrics MC=/path/to/mc
+
 # Check service health
 make status
+
+# Build the static documentation site
+make docs-site
 
 # Stop everything
 make docker-down
@@ -51,10 +56,28 @@ MinIO console is at http://localhost:9001 (user: `minioadmin`, password: `minioa
 | Method | Endpoint                   | Description                                        |
 |--------|----------------------------|----------------------------------------------------|
 | GET    | `/status`                  | Service health, bucket names, file count           |
+| GET    | `/redines`                 | Kubernetes readiness probe                         |
+| GET    | `/helthcheck`              | Kubernetes liveness probe                          |
 | GET    | `/list`                    | All registered files with bucket type and route    |
 | GET    | `/update?filename=<name>`  | Sync and return current location of a file         |
+| GET    | `/metrics`                 | Prometheus metrics for file volumes and uploads    |
 | GET    | `/public/<key>`            | 302 redirect to public S3 URL                      |
 | GET    | `/private/<key>`           | 302 redirect to presigned S3 URL (1h expiry)       |
+
+## Argo CD deployment
+
+Use `argocd_deployment.conf.example` as a GitOps deployment starter. It includes
+an Argo CD `Application`, Kubernetes workload resources, Prometheus scrape
+annotations, and probes wired to `/redines` and `/helthcheck`.
+
+## Prometheus metrics
+
+`/metrics` renders the current in-memory registry state and exposes:
+
+- `parparchik_volume_files{volume="public"}` — current public volume file count.
+- `parparchik_volume_files{volume="private"}` — current private volume file count.
+- `parparchik_uploads_per_week` — known file versions modified during the last 7 days.
+- `parparchik_uploads_per_month` — known file versions modified during the last 31 days.
 
 ### Example flow
 
@@ -89,8 +112,8 @@ curl -L http://localhost:8080/private/photo.jpg   # 302 → presigned URL → do
 - C++20 compiler (GCC 12+, Clang 15+, Apple Clang 15+)
 - git, curl (for initial sync only)
 
-All other dependencies (AWS SDK, httplib, nlohmann-json, sccache) are managed
-by the `../vcpkgproxy` sibling repository.
+All other dependencies (AWS SDK, httplib, nlohmann-json, prometheus-cpp,
+sccache) are managed by the `../vcpkgproxy` sibling repository.
 
 ### vcpkgproxy — offline package proxy
 
@@ -134,6 +157,32 @@ make build-all
 - Configures CMake with the vcpkg toolchain
 - Builds `parparchik` with sccache
 
+In short, `vcpkgproxy` gives this project two caches:
+
+- **Download cache**: `VCPKG_DOWNLOADS=../vcpkgproxy/downloads` keeps upstream
+  source archives local, so repeated dependency installs do not fetch the
+  internet again.
+- **Binary package cache**: `VCPKG_DEFAULT_BINARY_CACHE=../vcpkgproxy/binary-cache`
+  keeps compiled vcpkg packages as archives, so clean builds can restore
+  dependencies instead of rebuilding AWS SDK, Prometheus, and other libraries.
+- **Compiler cache**: `sccache` is placed first in `PATH` and configured as the
+  C/C++ compiler launcher, so repeated project compiles reuse cached object
+  files when compiler flags and inputs match.
+
+The Makefile wires this automatically:
+
+```make
+export VCPKG_ROOT := ../vcpkgproxy/vcpkg
+export VCPKG_DOWNLOADS := ../vcpkgproxy/downloads
+export VCPKG_DEFAULT_BINARY_CACHE := ../vcpkgproxy/binary-cache
+cmake -DCMAKE_TOOLCHAIN_FILE=../vcpkgproxy/vcpkg/scripts/buildsystems/vcpkg.cmake \
+      -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+```
+
+To set up a new machine, clone or restore `../vcpkgproxy`, run `make sync` once
+when network is available, then use `make build-all` or `make build` for cached
+offline rebuilds.
+
 ### Configuring vcpkg
 
 Dependencies are declared in `vcpkg.json`:
@@ -143,6 +192,7 @@ Dependencies are declared in `vcpkg.json`:
   "dependencies": [
     "cpp-httplib",
     "nlohmann-json",
+    "prometheus-cpp",
     {"name": "aws-sdk-cpp", "features": ["s3"]}
   ]
 }
@@ -193,21 +243,64 @@ make run-native
 
 All configuration is via environment variables:
 
-| Variable                    | Required | Default       | Description                              |
-|-----------------------------|----------|---------------|------------------------------------------|
-| `PARPARCHIK_PUBLIC_BUCKET`  | yes      |               | Name of the public S3 bucket             |
-| `PARPARCHIK_PRIVATE_BUCKET` | yes      |               | Name of the private S3 bucket            |
-| `AWS_REGION`                | no       | `us-east-1`   | AWS region                               |
-| `S3_ENDPOINT`               | no       |               | Custom S3 endpoint (for MinIO)           |
-| `S3_EXTERNAL_ENDPOINT`      | no       |               | Externally reachable S3 endpoint for URLs|
-| `AWS_ACCESS_KEY_ID`         | no       |               | AWS credentials                          |
-| `AWS_SECRET_ACCESS_KEY`     | no       |               | AWS credentials                          |
-| `PARPARCHIK_HOST`           | no       | `0.0.0.0`     | Listen address                           |
-| `PARPARCHIK_PORT`           | no       | `8080`        | Listen port                              |
+| Variable | Required | Default | Description |
+| --- | --- | --- | --- |
+| `PARPARCHIK_PUBLIC_BUCKET` | yes | | Name of the public S3 bucket |
+| `PARPARCHIK_PRIVATE_BUCKET` | yes | | Name of the private S3 bucket |
+| `PARPARCHIK_REGISTRY_MANIFEST_KEY` | no | `.parparchik/files.json` | Manifest object key stored in both buckets |
+| `AWS_REGION` | no | `us-east-1` | AWS region |
+| `S3_ENDPOINT` | no | | Custom S3 endpoint for MinIO/S3-compatible storage |
+| `S3_EXTERNAL_ENDPOINT` | no | | Externally reachable S3 endpoint for generated URLs |
+| `AWS_ACCESS_KEY_ID` | no | | AWS credentials |
+| `AWS_SECRET_ACCESS_KEY` | no | | AWS credentials |
+| `PARPARCHIK_HOST` | no | `0.0.0.0` | Listen address |
+| `PARPARCHIK_PORT` | no | `8080` | Listen port |
 
 When running in Docker with MinIO, `S3_ENDPOINT` points to the internal Docker
 hostname (`minio:9000`) and `S3_EXTERNAL_ENDPOINT` to the host-reachable address
 (`localhost:9000`) so presigned URLs work from outside the container network.
+
+### S3 JSON manifest registry
+
+At startup, parparchik reads `PARPARCHIK_REGISTRY_MANIFEST_KEY` from the public
+and private buckets into memory. If neither manifest exists, it scans both
+buckets, builds the registry, writes manifests back to both buckets, and only
+then marks readiness as healthy.
+
+Manifest format:
+
+```json
+{
+  "version": 1,
+  "bucket_type": "public",
+  "files": [
+    {
+      "key": "example.tgz",
+      "bucket": "public-bucket",
+      "bucket_type": "public",
+      "route": "/public/example.tgz",
+      "size": 1048576,
+      "last_modified": "2026-05-05T10:00:00Z"
+    }
+  ]
+}
+```
+
+Conflict rules:
+
+- If the same key exists in both real buckets, the public object is registered.
+- If manifest records disagree, parparchik verifies actual S3 object existence.
+- If a requested key is missing from memory, parparchik searches public first,
+  then private, returns the found file route, and persists repaired manifests.
+- If a manifest record points to a missing object, the stale record is removed.
+
+### Kubernetes probes
+
+- `/helthcheck` returns HTTP 200 when the process is alive. `/healthcheck` is
+  available as a spelling-safe alias.
+- `/redines` returns HTTP 200 only after S3 JSON manifest load and initial S3 sync have
+  completed. Before that it returns HTTP 503. `/readiness` is available as a
+  spelling-safe alias.
 
 ## Project structure
 
@@ -217,6 +310,8 @@ parparchik/
 ├── CMakePresets.json        CMake presets (vcpkg + sccache)
 ├── vcpkg.json               Dependency manifest
 ├── Makefile                 Build/run/test commands
+├── zensical.toml            Zensical static site configuration
+├── argocd_deployment.conf.example Argo CD + Kubernetes deployment example
 ├── docker-compose.yml       MinIO + parparchik stack
 ├── Dockerfile               Production C++ image
 ├── Dockerfile.test          Lightweight Python image for testing
@@ -233,6 +328,10 @@ parparchik/
 │   ├── s3_client.cc
 │   ├── file_registry.cc
 │   └── server.cc
+├── docs/                    Zensical source documentation
+├── site/                    Generated static documentation site
+├── procedures/              Maintenance procedures
+├── skills/                  Project-specific workflow notes
 └── test/
     └── e2e_test.sh          End-to-end test (18 assertions)
 
@@ -274,7 +373,14 @@ make run-docker         Start full Docker stack
 
 make test               Run e2e tests (containers must be up)
 make test-all           Start containers + run e2e tests
+make test-mock-metrics  Start containers + run mock metrics/S3 JSON manifest scenario
 
 make status             Check service health
 make list               List registered files
+make metrics            Print Prometheus metrics
+
+make docs-check         Validate Zensical documentation build
+make docs-site          Build static documentation into site/
+make docs-serve         Serve docs locally at localhost:8000
+make docs-procedure     Show documentation/skills update procedure
 ```
