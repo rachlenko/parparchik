@@ -8,10 +8,12 @@ icon: lucide/settings
 
 - Docker for the local MinIO stack.
 - MinIO client `mc` for e2e and mock tests.
-- CMake 3.25+ and a C++20 compiler for native builds.
-- `../vcpkgproxy` sibling repository for cached dependencies.
+- CMake 3.25+ and a C++20 compiler for native builds (C++ edition only).
+- `../vcpkgproxy` sibling repository for cached dependencies (C++ edition only).
 
-## Build
+## C++ implementation
+
+### Build
 
 ```bash
 make sync          # online: fill vcpkgproxy downloads and binary cache
@@ -20,7 +22,7 @@ make build-all     # offline path: vcpkg setup, CMake configure, compile
 
 The binary is written to `build/parparchik`.
 
-## vcpkg and build cache
+### vcpkg and build cache
 
 Dependencies are declared in `vcpkg.json`. The project uses AWS SDK C++ with the
 S3 feature only, plus `cpp-httplib`, `nlohmann-json`, and `prometheus-cpp`.
@@ -36,7 +38,7 @@ Use `make sync` when dependencies or baselines change. Use `make build-all` for
 normal repeatable builds; it restores from cache and avoids unnecessary network
 work.
 
-## Run locally with Docker
+### Run locally with Docker
 
 ```bash
 make run-docker
@@ -46,7 +48,7 @@ curl http://localhost:8080/status
 Docker Compose starts MinIO, creates `public-bucket` and `private-bucket`, and
 runs parparchik with `PARPARCHIK_REGISTRY_MANIFEST_KEY=.parparchik/files.json`.
 
-## Native run
+### Native run
 
 ```bash
 cp .env.example .env
@@ -56,6 +58,69 @@ make run-native
 ```
 
 Edit `.env` with bucket names, S3 endpoint, and credentials.
+
+### Tests
+
+```bash
+make test-all
+make test-mock-metrics
+```
+
+`make test-mock-metrics` creates `1mb_v0.0.1_file.tgz`, uploads it to the
+private bucket, prints `/metrics`, prints both JSON manifests, then moves the
+object to public and verifies public wins while private returns to zero entries.
+
+---
+
+## Nginx + Lua implementation
+
+### Architecture overview
+
+```mermaid
+flowchart LR
+  subgraph Docker
+    client([Client]) --> openresty["OpenResty<br/>:8080"]
+    openresty -->|SigV4| minio[(MinIO<br/>:9000)]
+    openresty -.->|302| client
+  end
+
+  subgraph Modules
+    direction TB
+    nginx[nginx.conf] --> handlers[handlers.lua]
+    handlers --> registry[registry.lua]
+    handlers --> s3[s3.lua]
+    s3 --> aws_sig[aws_sig.lua]
+    handlers --> metrics[metrics.lua]
+    handlers --> config[config.lua]
+  end
+```
+
+### Build and run
+
+```bash
+cd nginx-lua
+make up          # Start MinIO + OpenResty containers
+make test        # Run e2e tests (24 assertions)
+make test-all    # Combined: start + test
+make down        # Stop and remove containers
+```
+
+No compilation required — Lua scripts are copied directly into the container.
+
+### Module responsibilities
+
+| Module | Dependencies | Purpose |
+|--------|-------------|---------|
+| `config.lua` | none | Parse `PARPARCHIK_*`, `S3_*`, `AWS_*` env vars |
+| `aws_sig.lua` | OpenSSL FFI | HMAC-SHA256, SigV4 request signing, presigned URLs |
+| `s3.lua` | resty.http, aws_sig | ListObjects, HeadObject, GetObject, PutObject |
+| `registry.lua` | ngx.shared.DICT | File to route mapping, manifest load/persist |
+| `metrics.lua` | none | Prometheus text-format gauge rendering |
+| `handlers.lua` | all above | Init, sync, resolve, HTTP handlers |
+
+See [Nginx + Lua](nginx-lua.md) for full module diagrams and routing logic.
+
+---
 
 ## Step-by-step bucket setup
 
@@ -124,7 +189,9 @@ Edit `.env` with bucket names, S3 endpoint, and credentials.
 1. Start MinIO and parparchik with Docker Compose:
 
     ```bash
-    make run-docker
+    make run-docker     # C++ edition
+    # or
+    cd nginx-lua && make up   # Nginx + Lua edition
     ```
 
     This creates `public-bucket` (public read) and `private-bucket` (private)
@@ -149,6 +216,7 @@ Edit `.env` with bucket names, S3 endpoint, and credentials.
 | --- | --- | --- |
 | `PARPARCHIK_PUBLIC_BUCKET` | | Public S3 bucket name. |
 | `PARPARCHIK_PRIVATE_BUCKET` | | Private S3 bucket name. |
+| `PARPARCHIK_BUCKETS` | | Multi-bucket config: `name:manifest:public,...` |
 | `PARPARCHIK_REGISTRY_MANIFEST_KEY` | `.parparchik/files.json` | Manifest object key in both buckets. |
 | `AWS_REGION` | `us-east-1` | AWS region. |
 | `S3_ENDPOINT` | | Internal S3-compatible endpoint, e.g. `minio:9000`. |
@@ -168,17 +236,6 @@ Edit `.env` with bucket names, S3 endpoint, and credentials.
 - Stale manifest records are verified against real S3 objects and repaired.
 - A missing request key triggers public-then-private S3 lookup, response serving,
   in-memory update, metric refresh, and manifest persistence.
-
-## Tests
-
-```bash
-make test-all
-make test-mock-metrics
-```
-
-`make test-mock-metrics` creates `1mb_v0.0.1_file.tgz`, uploads it to the
-private bucket, prints `/metrics`, prints both JSON manifests, then moves the
-object to public and verifies public wins while private returns to zero entries.
 
 ## Kubernetes and Argo CD
 

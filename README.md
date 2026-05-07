@@ -436,13 +436,22 @@ parparchik/
 │   ├── config.h             Configuration from env vars
 │   ├── s3_client.h          AWS S3 SDK wrapper
 │   ├── file_registry.h      Thread-safe file → route registry
+│   ├── metrics.h            Prometheus metrics
 │   └── server.h             HTTP server
 ├── src/
 │   ├── main.cc              Entry point
 │   ├── config.cc
 │   ├── s3_client.cc
 │   ├── file_registry.cc
+│   ├── metrics.cc
 │   └── server.cc
+├── nginx-lua/               Nginx + Lua alternative implementation
+│   ├── lua/                 Lua application modules
+│   ├── test/                End-to-end test (24 assertions)
+│   ├── Dockerfile           OpenResty Alpine container
+│   ├── docker-compose.yml   MinIO + parparchik stack
+│   ├── nginx.conf           Route configuration
+│   └── Makefile             Build/run/test commands
 ├── docs/                    Zensical source documentation and generated site
 ├── procedures/              Maintenance procedures
 ├── skills/                  Project-specific workflow notes
@@ -498,3 +507,34 @@ make docs-site          Build static documentation into docs/
 make docs-serve         Serve docs locally at localhost:8000
 make docs-procedure     Show documentation/skills update procedure
 ```
+
+## Nginx + Lua alternative implementation
+
+The `nginx-lua/` directory contains a complete reimplementation of parparchik
+using **OpenResty** (Nginx with LuaJIT). It provides the same REST API and
+S3 routing logic using pure Lua scripts running inside Nginx.
+
+### Architecture comparison
+
+| Component | C++ (production) | Nginx + Lua (alternative) |
+|-----------|------------------|---------------------------|
+| Runtime | Custom HTTP server via cpp-httplib | OpenResty (Nginx + LuaJIT) |
+| S3 SDK | AWS SDK for C++ | Pure Lua SigV4 via OpenSSL FFI |
+| State | `std::unordered_map` + `std::mutex` | `ngx.shared.DICT` (cross-worker) |
+| JSON | nlohmann-json | lua-cjson (bundled with OpenResty) |
+| Metrics | prometheus-cpp | Pure Lua text renderer |
+| Concurrency | Thread pool | Nginx event loop + Lua coroutines |
+| Build time | Minutes (vcpkg + CMake) | Seconds (Docker layer cache) |
+| File routes | `/<bucket-name>/<key>` | `/public/<key>`, `/private/<key>` |
+
+### Quick start (Nginx + Lua)
+
+```bash
+cd nginx-lua
+make test-all    # Start stack + run 24-assertion e2e test
+make status      # Check health
+make down        # Stop
+```
+
+See [`nginx-lua/README.md`](nginx-lua/README.md) for full documentation,
+architecture diagrams, and module details.
