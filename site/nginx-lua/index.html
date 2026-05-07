@@ -12,13 +12,13 @@
         <meta name="author" content="parparchik maintainers">
       
       
-        <link rel="canonical" href="https://rachlenko.github.io/parparchik/monitoring/">
+        <link rel="canonical" href="https://rachlenko.github.io/parparchik/nginx-lua/">
       
       
-        <link rel="prev" href="../nginx-lua/">
+        <link rel="prev" href="../operations/">
       
       
-        <link rel="next" href="../procedures/">
+        <link rel="next" href="../monitoring.md">
       
       
         
@@ -29,7 +29,7 @@
     
     
       
-        <title>Monitoring - parparchik</title>
+        <title>Nginx + Lua Implementation - parparchik</title>
       
     
     
@@ -85,7 +85,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#monitoring" class="md-skip">
+        <a href="#nginx-lua-implementation" class="md-skip">
           Skip to content
         </a>
       
@@ -120,7 +120,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Monitoring
+              Nginx + Lua Implementation
             
           </span>
         </div>
@@ -291,34 +291,6 @@
       
   
   
-  
-  
-    <li class="md-nav__item">
-      <a href="../nginx-lua/" class="md-nav__link">
-        
-  
-  
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-server" viewBox="0 0 24 24"><rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><path d="M6 6h.01M6 18h.01"/></svg>
-  
-  <span class="md-ellipsis">
-    
-  
-  Nginx + Lua
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-    
-      
-      
-  
-  
     
   
   
@@ -335,12 +307,12 @@
           
   
   
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-activity" viewBox="0 0 24 24"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-server" viewBox="0 0 24 24"><rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><path d="M6 6h.01M6 18h.01"/></svg>
   
   <span class="md-ellipsis">
     
   
-  Monitoring
+  Nginx + Lua
 
     
   </span>
@@ -354,12 +326,12 @@
         
   
   
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-activity" viewBox="0 0 24 24"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-server" viewBox="0 0 24 24"><rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><path d="M6 6h.01M6 18h.01"/></svg>
   
   <span class="md-ellipsis">
     
   
-  Monitoring
+  Nginx + Lua
 
     
   </span>
@@ -385,10 +357,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#metrics" class="md-nav__link">
+  <a href="#architecture" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Metrics
+        Architecture
       </span>
     </span>
   </a>
@@ -396,10 +368,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#alerts" class="md-nav__link">
+  <a href="#request-lifecycle" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Alerts
+        Request lifecycle
       </span>
     </span>
   </a>
@@ -407,10 +379,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#example-configs" class="md-nav__link">
+  <a href="#startup-sequence" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Example configs
+        Startup sequence
       </span>
     </span>
   </a>
@@ -418,10 +390,43 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#mock-metrics-test" class="md-nav__link">
+  <a href="#file-routing-decision-tree" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Mock metrics test
+        File routing decision tree
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#module-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Module reference
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#technology-stack" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Technology stack
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Quick start
       </span>
     </span>
   </a>
@@ -432,6 +437,32 @@
   
 </nav>
       
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../monitoring.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Monitoring
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -505,10 +536,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#metrics" class="md-nav__link">
+  <a href="#architecture" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Metrics
+        Architecture
       </span>
     </span>
   </a>
@@ -516,10 +547,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#alerts" class="md-nav__link">
+  <a href="#request-lifecycle" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Alerts
+        Request lifecycle
       </span>
     </span>
   </a>
@@ -527,10 +558,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#example-configs" class="md-nav__link">
+  <a href="#startup-sequence" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Example configs
+        Startup sequence
       </span>
     </span>
   </a>
@@ -538,10 +569,43 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#mock-metrics-test" class="md-nav__link">
+  <a href="#file-routing-decision-tree" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Mock metrics test
+        File routing decision tree
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#module-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Module reference
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#technology-stack" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Technology stack
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Quick start
       </span>
     </span>
   </a>
@@ -574,104 +638,214 @@
   
 
 
-<h1 id="monitoring">Monitoring<a class="headerlink" href="#monitoring" title="Permanent link">&para;</a></h1>
-<p><code>/metrics</code> exposes Prometheus text format from the current in-memory registry.
-The registry is loaded from S3 JSON manifests and repaired on startup or request
-misses.</p>
-<h2 id="metrics">Metrics<a class="headerlink" href="#metrics" title="Permanent link">&para;</a></h2>
+<h1 id="nginx-lua-implementation">Nginx + Lua Implementation<a class="headerlink" href="#nginx-lua-implementation" title="Permanent link">&para;</a></h1>
+<p>Alternative implementation of parparchik using <strong>OpenResty</strong> (Nginx with LuaJIT).
+Drop-in replacement with the same REST API, environment variables, and MinIO stack.</p>
+<h2 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>flowchart TB
+  subgraph Client
+    client([Client&lt;br/&gt;curl / browser])
+  end
+
+  subgraph OpenResty["OpenResty Container :8080"]
+    direction TB
+    nginx[nginx.conf&lt;br/&gt;location routing]
+    nginx --&gt; handlers[handlers.lua&lt;br/&gt;request handlers]
+
+    subgraph Core["Core Modules"]
+      direction LR
+      config[config.lua&lt;br/&gt;env parser]
+      s3[s3.lua&lt;br/&gt;HTTP client]
+      aws[aws_sig.lua&lt;br/&gt;SigV4 FFI]
+      registry[registry.lua&lt;br/&gt;shared dict]
+      metrics_mod[metrics.lua&lt;br/&gt;Prometheus]
+    end
+
+    handlers --&gt; config
+    handlers --&gt; s3
+    handlers --&gt; registry
+    handlers --&gt; metrics_mod
+    s3 --&gt; aws
+  end
+
+  subgraph Storage["MinIO / S3 :9000"]
+    pub[(public-bucket)]
+    priv[(private-bucket)]
+  end
+
+  client --&gt; nginx
+  registry --&gt; dict[(ngx.shared.DICT&lt;br/&gt;file_registry)]
+  s3 --&gt;|SigV4 signed| pub
+  s3 --&gt;|SigV4 signed| priv
+  nginx -.-&gt;|302 redirect| client</code></pre>
+<h2 id="request-lifecycle">Request lifecycle<a class="headerlink" href="#request-lifecycle" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>sequenceDiagram
+  participant C as Client
+  participant N as Nginx
+  participant H as handlers.lua
+  participant R as registry.lua
+  participant S as s3.lua
+  participant M as MinIO
+
+  C-&gt;&gt;N: GET /public/photo.jpg
+  N-&gt;&gt;H: content_by_lua_block
+  H-&gt;&gt;R: lookup_by_route
+
+  alt Route found in registry
+    R--&gt;&gt;H: entry with key, bucket, route
+    H-&gt;&gt;S: object_exists
+    S-&gt;&gt;M: HEAD /bucket/key
+    M--&gt;&gt;S: 200 OK
+    H-&gt;&gt;S: public_url
+    H--&gt;&gt;C: 302 Location
+  else Route not found
+    R--&gt;&gt;H: nil
+    H-&gt;&gt;S: head_object in each bucket
+    alt Found
+      H-&gt;&gt;R: register_file
+      H-&gt;&gt;S: persist manifests
+      H--&gt;&gt;C: 302 Location
+    else Not found anywhere
+      H--&gt;&gt;C: 404 Not Found
+    end
+  end</code></pre>
+<h2 id="startup-sequence">Startup sequence<a class="headerlink" href="#startup-sequence" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>sequenceDiagram
+  participant W as Worker 0
+  participant D as ngx.shared.DICT
+  participant S as MinIO / S3
+
+  Note over W: init_worker_by_lua
+  W-&gt;&gt;W: config.load
+  W-&gt;&gt;S: try_get_object for each bucket manifest
+
+  alt All manifests present
+    W-&gt;&gt;D: Load entries from manifest JSON
+  else Any manifest missing
+    W-&gt;&gt;S: list_objects for all buckets
+    W-&gt;&gt;D: Register all discovered files
+  end
+
+  loop For each registered file
+    W-&gt;&gt;S: HEAD object to reconcile
+    alt Missing from S3
+      W-&gt;&gt;D: Remove stale entry
+    end
+  end
+
+  W-&gt;&gt;S: PUT updated manifests
+  W-&gt;&gt;D: set __ready__ = 1
+  Note over W,D: Service ready</code></pre>
+<h2 id="file-routing-decision-tree">File routing decision tree<a class="headerlink" href="#file-routing-decision-tree" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>flowchart TD
+  A["GET /prefix/key"] --&gt; B{"lookup_by_route"}
+  B --&gt;|Hit| C{"object_exists in bucket?"}
+  C --&gt;|Yes| D["Return entry"]
+  C --&gt;|No| E["resolve_missing_file"]
+
+  B --&gt;|Miss| F["Extract key from URL"]
+  F --&gt; E
+
+  E --&gt; G{"HEAD in each bucket"}
+  G --&gt;|Found| H{"Resolved route = requested route?"}
+  H --&gt;|Yes| I["Register + persist"] --&gt; D
+  H --&gt;|No| J["404 Not Found"]
+  G --&gt;|Not found| K["Remove stale entry"] --&gt; J
+
+  D --&gt; L{"bucket_type?"}
+  L --&gt;|public| M["302 public URL"]
+  L --&gt;|private| N["302 presigned URL"]</code></pre>
+<h2 id="module-reference">Module reference<a class="headerlink" href="#module-reference" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
-<th>Metric</th>
-<th>Type</th>
-<th>Description</th>
+<th>Module</th>
+<th>Purpose</th>
+<th>Key functions</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>parparchik_volume_files{volume="&lt;bucket&gt;"}</code></td>
-<td>gauge</td>
-<td>Current file count for each configured bucket.</td>
+<td><code>config.lua</code></td>
+<td>Parse environment variables</td>
+<td><code>load()</code></td>
 </tr>
 <tr>
-<td><code>parparchik_duplicate_files</code></td>
-<td>gauge</td>
-<td>Number of file keys that exist in more than one S3 bucket.</td>
+<td><code>aws_sig.lua</code></td>
+<td>AWS SigV4 signing</td>
+<td><code>sign_request()</code>, <code>presigned_url()</code></td>
 </tr>
 <tr>
-<td><code>parparchik_uploads_per_week</code></td>
-<td>gauge</td>
-<td>Files modified during the last 7 days.</td>
+<td><code>s3.lua</code></td>
+<td>S3 HTTP operations</td>
+<td><code>list_objects()</code>, <code>head_object()</code>, <code>get_object()</code>, <code>put_object()</code></td>
 </tr>
 <tr>
-<td><code>parparchik_uploads_per_month</code></td>
-<td>gauge</td>
-<td>Files modified during the last 31 days.</td>
+<td><code>registry.lua</code></td>
+<td>File registry</td>
+<td><code>register_file()</code>, <code>lookup()</code>, <code>lookup_by_route()</code>, <code>list_all()</code></td>
+</tr>
+<tr>
+<td><code>metrics.lua</code></td>
+<td>Prometheus metrics</td>
+<td><code>render()</code></td>
+</tr>
+<tr>
+<td><code>handlers.lua</code></td>
+<td>HTTP handlers + init</td>
+<td><code>init()</code>, <code>handle_status()</code>, <code>handle_list()</code>, <code>handle_download()</code></td>
 </tr>
 </tbody>
 </table>
-<h2 id="alerts">Alerts<a class="headerlink" href="#alerts" title="Permanent link">&para;</a></h2>
-<p><code>parparchik.rules.yml.example</code> defines Prometheus alert rules:</p>
+<h2 id="technology-stack">Technology stack<a class="headerlink" href="#technology-stack" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
-<th>Alert</th>
-<th>Condition</th>
-<th>Severity</th>
-<th>Description</th>
+<th>Layer</th>
+<th>Technology</th>
+<th>Purpose</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>ParparchikDuplicateFiles</code></td>
-<td><code>parparchik_duplicate_files &gt; 0</code> for 5m</td>
-<td>warning</td>
-<td>One or more file keys exist in multiple S3 buckets. The highest-priority copy is served, but duplicates waste storage and may cause confusion.</td>
+<td>Web server</td>
+<td>OpenResty 1.27 (Alpine)</td>
+<td>Nginx + LuaJIT runtime</td>
+</tr>
+<tr>
+<td>HTTP client</td>
+<td>lua-resty-http 0.17</td>
+<td>Non-blocking cosocket HTTP</td>
+</tr>
+<tr>
+<td>Crypto</td>
+<td>OpenSSL via LuaJIT FFI</td>
+<td>HMAC-SHA256 for SigV4</td>
+</tr>
+<tr>
+<td>JSON</td>
+<td>lua-cjson (bundled)</td>
+<td>Request/response encoding</td>
+</tr>
+<tr>
+<td>State</td>
+<td>ngx.shared.DICT (10 MB)</td>
+<td>Cross-worker file registry</td>
+</tr>
+<tr>
+<td>Container</td>
+<td>Docker + Compose</td>
+<td>MinIO + OpenResty stack</td>
 </tr>
 </tbody>
 </table>
-<p><code>alertmanager.conf.example</code> routes <code>ParparchikDuplicateFiles</code> to a dedicated
-<code>parparchik-duplicates</code> receiver with a 12-hour repeat interval to avoid noise.</p>
-<h2 id="example-configs">Example configs<a class="headerlink" href="#example-configs" title="Permanent link">&para;</a></h2>
-<ul>
-<li><code>prometheus.conf.example</code> scrapes <code>parparchik:8080/metrics</code>.</li>
-<li><code>parparchik.rules.yml.example</code> defines Prometheus alert rules including duplicate file detection.</li>
-<li><code>alertmanager.conf.example</code> provides a local webhook-style receiver example with a dedicated route for duplicate alerts.</li>
-<li><code>grafana-parparchik-desktop.example</code> is an importable Grafana dashboard JSON
-  with prepared panels and alert lines for file counts and recent uploads.</li>
-</ul>
-<h2 id="mock-metrics-test">Mock metrics test<a class="headerlink" href="#mock-metrics-test" title="Permanent link">&para;</a></h2>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>make<span class="w"> </span>test-mock-metrics
+<h2 id="quick-start">Quick start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nb">cd</span><span class="w"> </span>nginx-lua
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>make<span class="w"> </span>test-all<span class="w">    </span><span class="c1"># Start stack + run 24-assertion e2e test</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>make<span class="w"> </span>status<span class="w">      </span><span class="c1"># Check health</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>make<span class="w"> </span>down<span class="w">        </span><span class="c1"># Stop everything</span>
 </span></code></pre></div>
-<p>The test prints:</p>
-<ul>
-<li><code>/metrics</code> after private upload.</li>
-<li>Public/private manifest JSON after private upload.</li>
-<li><code>/metrics</code> after moving the object to public.</li>
-<li>Public/private manifest JSON after public wins.</li>
-</ul>
-<p>Expected transition:</p>
-<table>
-<thead>
-<tr>
-<th>Step</th>
-<th style="text-align: right;">Private files</th>
-<th style="text-align: right;">Public files</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>After private upload</td>
-<td style="text-align: right;"><code>1</code></td>
-<td style="text-align: right;"><code>0</code></td>
-</tr>
-<tr>
-<td>After move to public</td>
-<td style="text-align: right;"><code>0</code></td>
-<td style="text-align: right;"><code>1</code></td>
-</tr>
-</tbody>
-</table>
+<p>See <code>nginx-lua/README.md</code> for the full project README with additional diagrams.</p>
 
 
 
@@ -712,7 +886,7 @@ misses.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../nginx-lua/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Nginx + Lua">
+          <a href="../operations/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Operations">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
@@ -722,20 +896,20 @@ misses.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Nginx + Lua
+                Operations
               </div>
             </div>
           </a>
         
         
           
-          <a href="../procedures/" class="md-footer__link md-footer__link--next" aria-label="Next: Procedures">
+          <a href="../monitoring.md" class="md-footer__link md-footer__link--next" aria-label="Next: Monitoring">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Procedures
+                Monitoring
               </div>
             </div>
             <div class="md-footer__button md-icon">

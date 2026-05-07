@@ -158,12 +158,12 @@ metrics: ## Print Prometheus metrics
 # ──────────────────────────────────────────────
 
 .PHONY: docs-check
-docs-check: ## Validate Zensical documentation build
-	$(ZENSICAL) build --strict --clean
+docs-check: ## Validate Zensical documentation build (source: docs/, output: site/)
+	$(ZENSICAL) build --strict
 
 .PHONY: docs-site
-docs-site: ## Build static documentation into docs/
-	$(ZENSICAL) build --clean
+docs-site: ## Build static documentation into site/ (source: docs/)
+	$(ZENSICAL) build
 
 .PHONY: docs-serve
 docs-serve: ## Serve documentation locally at localhost:8000

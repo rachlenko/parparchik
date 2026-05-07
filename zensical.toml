@@ -1,6 +1,5 @@
 [project]
 site_name = "parparchik"
-site_dir = "docs"
 site_url = "https://rachlenko.github.io/parparchik/"
 repo_url = "https://github.com/rachlenko/parparchik"
 repo_name = "rachlenko/parparchik"
@@ -18,6 +17,7 @@ nav = [
 
 [project.theme]
 language = "en"
+logo = "assets/logo.png"
 features = [
   "content.code.copy",
   "content.code.select",
@@ -29,9 +29,6 @@ features = [
   "navigation.tracking",
   "search.highlight",
 ]
-
-[project.theme.icon]
-logo = "assets/logo.png"
 
 [[project.theme.palette]]
 scheme = "default"

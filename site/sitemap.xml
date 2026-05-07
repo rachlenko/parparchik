@@ -1,3 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+      <url>
+        <loc>https://rachlenko.github.io/parparchik/</loc>
+      </url>
+      <url>
+        <loc>https://rachlenko.github.io/parparchik/operations/</loc>
+      </url>
+      <url>
+        <loc>https://rachlenko.github.io/parparchik/nginx-lua/</loc>
+      </url>
+      <url>
+        <loc>https://rachlenko.github.io/parparchik/monitoring/</loc>
+      </url>
+      <url>
+        <loc>https://rachlenko.github.io/parparchik/procedures/</loc>
+      </url>
 </urlset>
