@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<body>
+<div class="language-plantuml"><pre><code>
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+Person(user, "User")
+Container(app, "Application", "Java")
+Rel(user, app, "Uses")
+</code></pre></div>
+<script src="https://cdn.jsdelivr.net/npm/plantuml-encoder@1.4.0/dist/plantuml-encoder.min.js"></script>
+<script>
+document.querySelectorAll('.language-plantuml, .language-text').forEach(function(el) {
+    if(el.textContent.indexOf('!include') > -1 || el.textContent.indexOf('plantuml') > -1) {
+        var text = el.textContent;
+        var encoded = plantumlEncoder.encode(text);
+        var img = document.createElement('img');
+        img.src = 'http://www.plantuml.com/plantuml/svg/' + encoded;
+        el.parentNode.replaceChild(img, el);
+    }
+});
+</script>
+</body>
+</html>

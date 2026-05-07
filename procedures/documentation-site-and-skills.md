@@ -24,7 +24,7 @@ change.
 
 ## Documentation dependency flow
 
-```mermaid
+<div class="mermaid">
 flowchart TD
   change["Code or config change"] --> which{"Which edition?"}
   which -->|C++| update_readme["Update README.md"]
@@ -39,7 +39,7 @@ flowchart TD
   update_skills --> docs_check["make docs-check"]
   docs_check --> docs_site["make docs-site"]
   docs_site --> review["git status --short"]
-```
+</div>
 
 ## Zensical commands
 
@@ -51,3 +51,8 @@ make docs-serve
 
 `docs/` is the generated static output. Rebuild it from the source docs and
 `zensical.toml`; do not edit generated HTML by hand.
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({ startOnLoad: true, theme: 'default' });
+</script>

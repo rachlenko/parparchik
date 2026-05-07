@@ -644,44 +644,43 @@
 <p>Alternative implementation of parparchik using <strong>OpenResty</strong> (Nginx with LuaJIT).
 Drop-in replacement with the same REST API, environment variables, and MinIO stack.</p>
 <h2 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h2>
-<pre class="mermaid"><code>flowchart TB
-  subgraph Client
-    client([Client&lt;br/&gt;curl / browser])
-  end
-
-  subgraph OpenResty["OpenResty Container :8080"]
-    direction TB
-    nginx[nginx.conf&lt;br/&gt;location routing]
-    nginx --&gt; handlers[handlers.lua&lt;br/&gt;request handlers]
-
-    subgraph Core["Core Modules"]
-      direction LR
-      config[config.lua&lt;br/&gt;env parser]
-      s3[s3.lua&lt;br/&gt;HTTP client]
-      aws[aws_sig.lua&lt;br/&gt;SigV4 FFI]
-      registry[registry.lua&lt;br/&gt;shared dict]
-      metrics_mod[metrics.lua&lt;br/&gt;Prometheus]
-    end
-
-    handlers --&gt; config
-    handlers --&gt; s3
-    handlers --&gt; registry
-    handlers --&gt; metrics_mod
-    s3 --&gt; aws
-  end
-
-  subgraph Storage["MinIO / S3 :9000"]
-    pub[(public-bucket)]
-    priv[(private-bucket)]
-  end
-
-  client --&gt; nginx
-  registry --&gt; dict[(ngx.shared.DICT&lt;br/&gt;file_registry)]
-  s3 --&gt;|SigV4 signed| pub
-  s3 --&gt;|SigV4 signed| priv
-  nginx -.-&gt;|302 redirect| client</code></pre>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>Person(client, &quot;Client&quot;, &quot;curl / browser&quot;)
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>System_Boundary(openresty, &quot;OpenResty Container :8080&quot;) {
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    Container(nginx, &quot;nginx.conf&quot;, &quot;Config&quot;, &quot;Location routing&quot;)
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    Container(handlers, &quot;handlers.lua&quot;, &quot;Lua&quot;, &quot;Request handlers&quot;)
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    System_Boundary(core, &quot;Core Modules&quot;) {
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>        Container(config, &quot;config.lua&quot;, &quot;Lua&quot;, &quot;Env parser&quot;)
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>        Container(s3, &quot;s3.lua&quot;, &quot;Lua&quot;, &quot;HTTP client&quot;)
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>        Container(aws, &quot;aws_sig.lua&quot;, &quot;Lua&quot;, &quot;SigV4 FFI&quot;)
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>        Container(registry, &quot;registry.lua&quot;, &quot;Lua&quot;, &quot;Shared dict manager&quot;)
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>        Container(metrics_mod, &quot;metrics.lua&quot;, &quot;Lua&quot;, &quot;Prometheus metrics&quot;)
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    }
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>    ContainerDb(dict, &quot;ngx.shared.DICT&quot;, &quot;Memory&quot;, &quot;file_registry&quot;)
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>}
+</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>
+</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>System_Ext(pub, &quot;public-bucket&quot;, &quot;MinIO / S3 :9000&quot;)
+</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>System_Ext(priv, &quot;private-bucket&quot;, &quot;MinIO / S3 :9000&quot;)
+</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>
+</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>Rel(client, nginx, &quot;Makes requests&quot;)
+</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>Rel(nginx, handlers, &quot;Delegates&quot;)
+</span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>Rel(handlers, config, &quot;Uses&quot;)
+</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>Rel(handlers, s3, &quot;Uses&quot;)
+</span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>Rel(handlers, registry, &quot;Uses&quot;)
+</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>Rel(handlers, metrics_mod, &quot;Uses&quot;)
+</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>Rel(s3, aws, &quot;Uses&quot;)
+</span><span id="__span-0-29"><a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>Rel(registry, dict, &quot;Stores state&quot;)
+</span><span id="__span-0-30"><a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>
+</span><span id="__span-0-31"><a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>Rel(s3, pub, &quot;SigV4 signed&quot;)
+</span><span id="__span-0-32"><a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>Rel(s3, priv, &quot;SigV4 signed&quot;)
+</span><span id="__span-0-33"><a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>Rel(nginx, client, &quot;302 redirect&quot;)
+</span></code></pre></div>
 <h2 id="request-lifecycle">Request lifecycle<a class="headerlink" href="#request-lifecycle" title="Permanent link">&para;</a></h2>
-<pre class="mermaid"><code>sequenceDiagram
+<div class="mermaid">
+sequenceDiagram
   participant C as Client
   participant N as Nginx
   participant H as handlers.lua
@@ -689,74 +688,82 @@ Drop-in replacement with the same REST API, environment variables, and MinIO sta
   participant S as s3.lua
   participant M as MinIO
 
-  C-&gt;&gt;N: GET /public/photo.jpg
-  N-&gt;&gt;H: content_by_lua_block
-  H-&gt;&gt;R: lookup_by_route
+  C->>N: GET /public/photo.jpg
+  N->>H: content_by_lua_block
+  H->>R: lookup_by_route
 
   alt Route found in registry
-    R--&gt;&gt;H: entry with key, bucket, route
-    H-&gt;&gt;S: object_exists
-    S-&gt;&gt;M: HEAD /bucket/key
-    M--&gt;&gt;S: 200 OK
-    H-&gt;&gt;S: public_url
-    H--&gt;&gt;C: 302 Location
+    R-->>H: entry with key, bucket, route
+    H->>S: object_exists
+    S->>M: HEAD /bucket/key
+    M-->>S: 200 OK
+    H->>S: public_url
+    H-->>C: 302 Location
   else Route not found
-    R--&gt;&gt;H: nil
-    H-&gt;&gt;S: head_object in each bucket
+    R-->>H: nil
+    H->>S: head_object in each bucket
     alt Found
-      H-&gt;&gt;R: register_file
-      H-&gt;&gt;S: persist manifests
-      H--&gt;&gt;C: 302 Location
+      H->>R: register_file
+      H->>S: persist manifests
+      H-->>C: 302 Location
     else Not found anywhere
-      H--&gt;&gt;C: 404 Not Found
+      H-->>C: 404 Not Found
     end
-  end</code></pre>
+  end
+</div>
+
 <h2 id="startup-sequence">Startup sequence<a class="headerlink" href="#startup-sequence" title="Permanent link">&para;</a></h2>
-<pre class="mermaid"><code>sequenceDiagram
+<div class="mermaid">
+sequenceDiagram
   participant W as Worker 0
   participant D as ngx.shared.DICT
   participant S as MinIO / S3
 
   Note over W: init_worker_by_lua
-  W-&gt;&gt;W: config.load
-  W-&gt;&gt;S: try_get_object for each bucket manifest
+  W->>W: config.load
+  W->>S: try_get_object for each bucket manifest
 
   alt All manifests present
-    W-&gt;&gt;D: Load entries from manifest JSON
+    W->>D: Load entries from manifest JSON
   else Any manifest missing
-    W-&gt;&gt;S: list_objects for all buckets
-    W-&gt;&gt;D: Register all discovered files
+    W->>S: list_objects for all buckets
+    W->>D: Register all discovered files
   end
 
   loop For each registered file
-    W-&gt;&gt;S: HEAD object to reconcile
+    W->>S: HEAD object to reconcile
     alt Missing from S3
-      W-&gt;&gt;D: Remove stale entry
+      W->>D: Remove stale entry
     end
   end
 
-  W-&gt;&gt;S: PUT updated manifests
-  W-&gt;&gt;D: set __ready__ = 1
-  Note over W,D: Service ready</code></pre>
+  W->>S: PUT updated manifests
+  W->>D: set __ready__ = 1
+  Note over W,D: Service ready
+</div>
+
 <h2 id="file-routing-decision-tree">File routing decision tree<a class="headerlink" href="#file-routing-decision-tree" title="Permanent link">&para;</a></h2>
-<pre class="mermaid"><code>flowchart TD
-  A["GET /prefix/key"] --&gt; B{"lookup_by_route"}
-  B --&gt;|Hit| C{"object_exists in bucket?"}
-  C --&gt;|Yes| D["Return entry"]
-  C --&gt;|No| E["resolve_missing_file"]
+<div class="mermaid">
+flowchart TD
+  A["GET /prefix/key"] --> B{"lookup_by_route"}
+  B -->|Hit| C{"object_exists in bucket?"}
+  C -->|Yes| D["Return entry"]
+  C -->|No| E["resolve_missing_file"]
 
-  B --&gt;|Miss| F["Extract key from URL"]
-  F --&gt; E
+  B -->|Miss| F["Extract key from URL"]
+  F --> E
 
-  E --&gt; G{"HEAD in each bucket"}
-  G --&gt;|Found| H{"Resolved route = requested route?"}
-  H --&gt;|Yes| I["Register + persist"] --&gt; D
-  H --&gt;|No| J["404 Not Found"]
-  G --&gt;|Not found| K["Remove stale entry"] --&gt; J
+  E --> G{"HEAD in each bucket"}
+  G -->|Found| H{"Resolved route = requested route?"}
+  H -->|Yes| I["Register + persist"] --> D
+  H -->|No| J["404 Not Found"]
+  G -->|Not found| K["Remove stale entry"] --> J
 
-  D --&gt; L{"bucket_type?"}
-  L --&gt;|public| M["302 public URL"]
-  L --&gt;|private| N["302 presigned URL"]</code></pre>
+  D --> L{"bucket_type?"}
+  L -->|public| M["302 public URL"]
+  L -->|private| N["302 presigned URL"]
+</div>
+
 <h2 id="module-reference">Module reference<a class="headerlink" href="#module-reference" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -842,12 +849,28 @@ Drop-in replacement with the same REST API, environment variables, and MinIO sta
 </tbody>
 </table>
 <h2 id="quick-start">Quick start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nb">cd</span><span class="w"> </span>nginx-lua
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>make<span class="w"> </span>test-all<span class="w">    </span><span class="c1"># Start stack + run 24-assertion e2e test</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>make<span class="w"> </span>status<span class="w">      </span><span class="c1"># Check health</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>make<span class="w"> </span>down<span class="w">        </span><span class="c1"># Stop everything</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nb">cd</span><span class="w"> </span>nginx-lua
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>make<span class="w"> </span>test-all<span class="w">    </span><span class="c1"># Start stack + run 24-assertion e2e test</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>make<span class="w"> </span>status<span class="w">      </span><span class="c1"># Check health</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>make<span class="w"> </span>down<span class="w">        </span><span class="c1"># Stop everything</span>
 </span></code></pre></div>
 <p>See <code>nginx-lua/README.md</code> for the full project README with additional diagrams.</p>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({ startOnLoad: true, theme: 'default' });
+</script>
+<script src="https://cdn.jsdelivr.net/npm/plantuml-encoder@1.4.0/dist/plantuml-encoder.min.js"></script>
+<script>
+document.querySelectorAll('.language-plantuml, .language-text').forEach(function(el) {
+    var text = el.textContent;
+    if (text.includes('!include') || text.includes('System_Boundary') || text.includes('Person(')) {
+        var encoded = plantumlEncoder.encode(text);
+        var img = document.createElement('img');
+        img.src = 'https://www.plantuml.com/plantuml/svg/' + encoded;
+        el.parentNode.replaceChild(img, el);
+    }
+});
+</script>
 
 
 

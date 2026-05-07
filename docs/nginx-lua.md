@@ -9,48 +9,45 @@ Drop-in replacement with the same REST API, environment variables, and MinIO sta
 
 ## Architecture
 
-```mermaid
-flowchart TB
-  subgraph Client
-    client([Client<br/>curl / browser])
-  end
+```plantuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
 
-  subgraph OpenResty["OpenResty Container :8080"]
-    direction TB
-    nginx[nginx.conf<br/>location routing]
-    nginx --> handlers[handlers.lua<br/>request handlers]
+Person(client, "Client", "curl / browser")
 
-    subgraph Core["Core Modules"]
-      direction LR
-      config[config.lua<br/>env parser]
-      s3[s3.lua<br/>HTTP client]
-      aws[aws_sig.lua<br/>SigV4 FFI]
-      registry[registry.lua<br/>shared dict]
-      metrics_mod[metrics.lua<br/>Prometheus]
-    end
+System_Boundary(openresty, "OpenResty Container :8080") {
+    Container(nginx, "nginx.conf", "Config", "Location routing")
+    Container(handlers, "handlers.lua", "Lua", "Request handlers")
+    
+    System_Boundary(core, "Core Modules") {
+        Container(config, "config.lua", "Lua", "Env parser")
+        Container(s3, "s3.lua", "Lua", "HTTP client")
+        Container(aws, "aws_sig.lua", "Lua", "SigV4 FFI")
+        Container(registry, "registry.lua", "Lua", "Shared dict manager")
+        Container(metrics_mod, "metrics.lua", "Lua", "Prometheus metrics")
+    }
+    ContainerDb(dict, "ngx.shared.DICT", "Memory", "file_registry")
+}
 
-    handlers --> config
-    handlers --> s3
-    handlers --> registry
-    handlers --> metrics_mod
-    s3 --> aws
-  end
+System_Ext(pub, "public-bucket", "MinIO / S3 :9000")
+System_Ext(priv, "private-bucket", "MinIO / S3 :9000")
 
-  subgraph Storage["MinIO / S3 :9000"]
-    pub[(public-bucket)]
-    priv[(private-bucket)]
-  end
+Rel(client, nginx, "Makes requests")
+Rel(nginx, handlers, "Delegates")
+Rel(handlers, config, "Uses")
+Rel(handlers, s3, "Uses")
+Rel(handlers, registry, "Uses")
+Rel(handlers, metrics_mod, "Uses")
+Rel(s3, aws, "Uses")
+Rel(registry, dict, "Stores state")
 
-  client --> nginx
-  registry --> dict[(ngx.shared.DICT<br/>file_registry)]
-  s3 -->|SigV4 signed| pub
-  s3 -->|SigV4 signed| priv
-  nginx -.->|302 redirect| client
+Rel(s3, pub, "SigV4 signed")
+Rel(s3, priv, "SigV4 signed")
+Rel(nginx, client, "302 redirect")
 ```
 
 ## Request lifecycle
 
-```mermaid
+<div class="mermaid">
 sequenceDiagram
   participant C as Client
   participant N as Nginx
@@ -81,11 +78,11 @@ sequenceDiagram
       H-->>C: 404 Not Found
     end
   end
-```
+</div>
 
 ## Startup sequence
 
-```mermaid
+<div class="mermaid">
 sequenceDiagram
   participant W as Worker 0
   participant D as ngx.shared.DICT
@@ -112,11 +109,11 @@ sequenceDiagram
   W->>S: PUT updated manifests
   W->>D: set __ready__ = 1
   Note over W,D: Service ready
-```
+</div>
 
 ## File routing decision tree
 
-```mermaid
+<div class="mermaid">
 flowchart TD
   A["GET /prefix/key"] --> B{"lookup_by_route"}
   B -->|Hit| C{"object_exists in bucket?"}
@@ -135,7 +132,7 @@ flowchart TD
   D --> L{"bucket_type?"}
   L -->|public| M["302 public URL"]
   L -->|private| N["302 presigned URL"]
-```
+</div>
 
 ## Module reference
 
@@ -169,3 +166,20 @@ make down        # Stop everything
 ```
 
 See `nginx-lua/README.md` for the full project README with additional diagrams.
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({ startOnLoad: true, theme: 'default' });
+</script>
+<script src="https://cdn.jsdelivr.net/npm/plantuml-encoder@1.4.0/dist/plantuml-encoder.min.js"></script>
+<script>
+document.querySelectorAll('.language-plantuml, .language-text').forEach(function(el) {
+    var text = el.textContent;
+    if (text.includes('!include') || text.includes('System_Boundary') || text.includes('Person(')) {
+        var encoded = plantumlEncoder.encode(text);
+        var img = document.createElement('img');
+        img.src = 'https://www.plantuml.com/plantuml/svg/' + encoded;
+        el.parentNode.replaceChild(img, el);
+    }
+});
+</script>

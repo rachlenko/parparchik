@@ -727,25 +727,40 @@ or private access, serving redirects to S3 URLs.</p>
 <li>Two implementations: C++ (production) and Nginx + Lua (alternative).</li>
 </ul>
 <h2 id="high-level-architecture">High-level architecture<a class="headerlink" href="#high-level-architecture" title="Permanent link">&para;</a></h2>
-<pre class="mermaid"><code>flowchart LR
-  client([Client&lt;br/&gt;curl / app]) --&gt; service
-
-  subgraph service[parparchik HTTP service]
-    direction TB
-    router[Request Router] --&gt; registry[(File Registry)]
-    router --&gt; s3client[S3 Client]
-    router --&gt; prom[/metrics]
-  end
-
-  s3client --&gt; bucket1[(Bucket 1&lt;br/&gt;public)]
-  s3client --&gt; bucket2[(Bucket 2&lt;br/&gt;private)]
-  s3client --&gt; bucketN[(Bucket N)]
-
-  bucket1 -.-&gt; manifest1[Manifest JSON]
-  bucket2 -.-&gt; manifest2[Manifest JSON]
-  bucketN -.-&gt; manifestN[Manifest JSON]
-
-  service -.-&gt;|302 redirect| client</code></pre>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>Person(client, &quot;Client&quot;, &quot;curl / app&quot;)
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>System_Boundary(service, &quot;parparchik HTTP service&quot;) {
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    Container(router, &quot;Request Router&quot;, &quot;C++ / OpenResty&quot;, &quot;Routes requests&quot;)
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    ContainerDb(registry, &quot;File Registry&quot;, &quot;Memory&quot;, &quot;In-memory metadata&quot;)
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    Container(s3client, &quot;S3 Client&quot;, &quot;SDK / HTTP&quot;, &quot;Communicates with S3&quot;)
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    Container(prom, &quot;Metrics&quot;, &quot;Prometheus&quot;, &quot;/metrics endpoint&quot;)
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    Rel(router, registry, &quot;Queries route&quot;)
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    Rel(router, s3client, &quot;Checks S3&quot;)
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    Rel(router, prom, &quot;Exposes&quot;)
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>}
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>System_Ext(bucket1, &quot;Bucket 1 (public)&quot;, &quot;S3&quot;)
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>System_Ext(bucket2, &quot;Bucket 2 (private)&quot;, &quot;S3&quot;)
+</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>System_Ext(bucketN, &quot;Bucket N&quot;, &quot;S3&quot;)
+</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>
+</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>System_Ext(manifest1, &quot;Manifest JSON 1&quot;, &quot;S3 object&quot;)
+</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>System_Ext(manifest2, &quot;Manifest JSON 2&quot;, &quot;S3 object&quot;)
+</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>System_Ext(manifestN, &quot;Manifest JSON N&quot;, &quot;S3 object&quot;)
+</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>
+</span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>Rel(client, router, &quot;Requests file&quot;)
+</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>Rel(s3client, bucket1, &quot;Reads/Writes&quot;)
+</span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>Rel(s3client, bucket2, &quot;Reads/Writes&quot;)
+</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>Rel(s3client, bucketN, &quot;Reads/Writes&quot;)
+</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>
+</span><span id="__span-0-29"><a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>Rel(bucket1, manifest1, &quot;Stores&quot;)
+</span><span id="__span-0-30"><a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>Rel(bucket2, manifest2, &quot;Stores&quot;)
+</span><span id="__span-0-31"><a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>Rel(bucketN, manifestN, &quot;Stores&quot;)
+</span><span id="__span-0-32"><a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>
+</span><span id="__span-0-33"><a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>Rel(router, client, &quot;302 redirect&quot;)
+</span></code></pre></div>
 <h2 id="implementation-comparison">Implementation comparison<a class="headerlink" href="#implementation-comparison" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -799,45 +814,51 @@ or private access, serving redirects to S3 URLs.</p>
 </tbody>
 </table>
 <h2 id="request-routing-flow">Request routing flow<a class="headerlink" href="#request-routing-flow" title="Permanent link">&para;</a></h2>
-<pre class="mermaid"><code>flowchart TD
-  req["Incoming request&lt;br/&gt;GET /prefix/key"] --&gt; lookup{"Route exists&lt;br/&gt;in registry?"}
-  lookup --&gt;|Yes| verify{"Object exists&lt;br/&gt;in S3 bucket?"}
-  verify --&gt;|Yes| redirect["302 Redirect&lt;br/&gt;to S3 URL"]
-  verify --&gt;|No| resolve["Search all buckets&lt;br/&gt;in priority order"]
+<div class="mermaid">
+flowchart TD
+  req["Incoming request<br/>GET /prefix/key"] --> lookup{"Route exists<br/>in registry?"}
+  lookup -->|Yes| verify{"Object exists<br/>in S3 bucket?"}
+  verify -->|Yes| redirect["302 Redirect<br/>to S3 URL"]
+  verify -->|No| resolve["Search all buckets<br/>in priority order"]
 
-  lookup --&gt;|No| extract["Extract key&lt;br/&gt;from URL path"]
-  extract --&gt; resolve
+  lookup -->|No| extract["Extract key<br/>from URL path"]
+  extract --> resolve
 
-  resolve --&gt; found{"Found in&lt;br/&gt;any bucket?"}
-  found --&gt;|Yes| register["Register file&lt;br/&gt;+ persist manifests"]
-  register --&gt; redirect
-  found --&gt;|No| notfound["404 Not Found"]
+  resolve --> found{"Found in<br/>any bucket?"}
+  found -->|Yes| register["Register file<br/>+ persist manifests"]
+  register --> redirect
+  found -->|No| notfound["404 Not Found"]
 
-  redirect --&gt; type{"Bucket type?"}
-  type --&gt;|Public| pub["Public URL&lt;br/&gt;direct link"]
-  type --&gt;|Private| pre["Presigned URL&lt;br/&gt;SigV4 query-string"]</code></pre>
+  redirect --> type{"Bucket type?"}
+  type -->|Public| pub["Public URL<br/>direct link"]
+  type -->|Private| pre["Presigned URL<br/>SigV4 query-string"]
+</div>
+
 <h2 id="startup-lifecycle">Startup lifecycle<a class="headerlink" href="#startup-lifecycle" title="Permanent link">&para;</a></h2>
-<pre class="mermaid"><code>sequenceDiagram
+<div class="mermaid">
+sequenceDiagram
   participant S as S3 / MinIO
   participant P as parparchik
   participant R as File Registry
 
   Note over P: Process starts
-  P-&gt;&gt;S: GET manifest from each bucket
+  P->>S: GET manifest from each bucket
   alt All manifests exist
-    S--&gt;&gt;P: JSON manifest data
-    P-&gt;&gt;R: Load entries into registry
+    S-->>P: JSON manifest data
+    P->>R: Load entries into registry
   else Any manifest missing
-    S--&gt;&gt;P: 404 (missing)
-    P-&gt;&gt;S: ListObjects on all buckets
-    S--&gt;&gt;P: Object listing
-    P-&gt;&gt;R: Backfill registry from listing
-    P-&gt;&gt;S: PUT generated manifests
+    S-->>P: 404 (missing)
+    P->>S: ListObjects on all buckets
+    S-->>P: Object listing
+    P->>R: Backfill registry from listing
+    P->>S: PUT generated manifests
   end
-  P-&gt;&gt;S: HEAD each registered file
+  P->>S: HEAD each registered file
   Note over P: Reconcile stale entries
-  P-&gt;&gt;S: PUT updated manifests
-  Note over P,R: ready = true</code></pre>
+  P->>S: PUT updated manifests
+  Note over P,R: ready = true
+</div>
+
 <h2 id="runtime-flow">Runtime flow<a class="headerlink" href="#runtime-flow" title="Permanent link">&para;</a></h2>
 <ol>
 <li>Startup reads manifests from all configured buckets using their respective keys.</li>
@@ -847,19 +868,19 @@ or private access, serving redirects to S3 URLs.</p>
 <li>On request miss or stale route, parparchik checks buckets in priority order, serves the found route, updates memory, and writes all manifests.</li>
 </ol>
 <h2 id="manifest-format">Manifest format<a class="headerlink" href="#manifest-format" title="Permanent link">&para;</a></h2>
-<div class="language-json highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">&quot;version&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="nt">&quot;bucket&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;private-bucket&quot;</span><span class="p">,</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">&quot;files&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="p">{</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">      </span><span class="nt">&quot;key&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1mb_v0.0.1_file.tgz&quot;</span><span class="p">,</span>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">      </span><span class="nt">&quot;bucket&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;private-bucket&quot;</span><span class="p">,</span>
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">      </span><span class="nt">&quot;route&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/private-bucket/1mb_v0.0.1_file.tgz&quot;</span><span class="p">,</span>
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">      </span><span class="nt">&quot;size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1048576</span><span class="p">,</span>
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">      </span><span class="nt">&quot;last_modified&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-05-05T10:00:00Z&quot;</span>
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">    </span><span class="p">}</span>
-</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">  </span><span class="p">]</span>
-</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="p">}</span>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">&quot;version&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">&quot;bucket&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;private-bucket&quot;</span><span class="p">,</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="nt">&quot;files&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="p">{</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">      </span><span class="nt">&quot;key&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1mb_v0.0.1_file.tgz&quot;</span><span class="p">,</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">      </span><span class="nt">&quot;bucket&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;private-bucket&quot;</span><span class="p">,</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">      </span><span class="nt">&quot;route&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/private-bucket/1mb_v0.0.1_file.tgz&quot;</span><span class="p">,</span>
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">      </span><span class="nt">&quot;size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1048576</span><span class="p">,</span>
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">      </span><span class="nt">&quot;last_modified&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-05-05T10:00:00Z&quot;</span>
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="w">  </span><span class="p">]</span>
+</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="p">}</span>
 </span></code></pre></div>
 <h2 id="api">API<a class="headerlink" href="#api" title="Permanent link">&para;</a></h2>
 <table>
@@ -920,21 +941,37 @@ fires when duplicates persist for 5 minutes. See <a href="monitoring/">Monitorin
 full config examples.</p>
 <h2 id="common-commands">Common commands<a class="headerlink" href="#common-commands" title="Permanent link">&para;</a></h2>
 <p><strong>C++ (production):</strong></p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>make<span class="w"> </span>build-all
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>make<span class="w"> </span>run-docker
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>make<span class="w"> </span>test-all
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>make<span class="w"> </span>test-mock-metrics
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>make<span class="w"> </span>docs-site
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>make<span class="w"> </span>build-all
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>make<span class="w"> </span>run-docker
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>make<span class="w"> </span>test-all
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>make<span class="w"> </span>test-mock-metrics
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>make<span class="w"> </span>docs-site
 </span></code></pre></div>
 <p><strong>Nginx + Lua (alternative):</strong></p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nb">cd</span><span class="w"> </span>nginx-lua
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>make<span class="w"> </span>test-all
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>make<span class="w"> </span>status
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>make<span class="w"> </span>down
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nb">cd</span><span class="w"> </span>nginx-lua
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>make<span class="w"> </span>test-all
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>make<span class="w"> </span>status
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>make<span class="w"> </span>down
 </span></code></pre></div>
 <p>See <a href="operations/">Operations</a> for build, run, test, vcpkg cache, and
 Kubernetes instructions. See <a href="nginx-lua/">Nginx + Lua</a> for the alternative
 implementation details.</p>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({ startOnLoad: true, theme: 'default' });
+</script>
+<script src="https://cdn.jsdelivr.net/npm/plantuml-encoder@1.4.0/dist/plantuml-encoder.min.js"></script>
+<script>
+document.querySelectorAll('.language-plantuml, .language-text').forEach(function(el) {
+    var text = el.textContent;
+    if (text.includes('!include') || text.includes('System_Boundary') || text.includes('Person(')) {
+        var encoded = plantumlEncoder.encode(text);
+        var img = document.createElement('img');
+        img.src = 'https://www.plantuml.com/plantuml/svg/' + encoded;
+        el.parentNode.replaceChild(img, el);
+    }
+});
+</script>
 
 
 

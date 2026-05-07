@@ -76,23 +76,35 @@ object to public and verifies public wins while private returns to zero entries.
 
 ### Architecture overview
 
-```mermaid
-flowchart LR
-  subgraph Docker
-    client([Client]) --> openresty["OpenResty<br/>:8080"]
-    openresty -->|SigV4| minio[(MinIO<br/>:9000)]
-    openresty -.->|302| client
-  end
+```plantuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
 
-  subgraph Modules
-    direction TB
-    nginx[nginx.conf] --> handlers[handlers.lua]
-    handlers --> registry[registry.lua]
-    handlers --> s3[s3.lua]
-    s3 --> aws_sig[aws_sig.lua]
-    handlers --> metrics[metrics.lua]
-    handlers --> config[config.lua]
-  end
+System_Boundary(docker, "Docker") {
+    Person(client, "Client")
+    Container(openresty, "OpenResty :8080", "Nginx", "Web Server")
+    System_Ext(minio, "MinIO :9000", "S3 Storage")
+    
+    Rel(client, openresty, "Requests")
+    Rel(openresty, minio, "SigV4")
+    Rel(openresty, client, "302 Redirect")
+}
+
+System_Boundary(modules, "Modules") {
+    Container(nginx, "nginx.conf", "Config")
+    Container(handlers, "handlers.lua", "Lua")
+    Container(registry, "registry.lua", "Lua")
+    Container(s3, "s3.lua", "Lua")
+    Container(aws_sig, "aws_sig.lua", "Lua")
+    Container(metrics_mod, "metrics.lua", "Lua")
+    Container(config, "config.lua", "Lua")
+    
+    Rel(nginx, handlers, "Uses")
+    Rel(handlers, registry, "Uses")
+    Rel(handlers, s3, "Uses")
+    Rel(s3, aws_sig, "Uses")
+    Rel(handlers, metrics_mod, "Uses")
+    Rel(handlers, config, "Uses")
+}
 ```
 
 ### Build and run
@@ -406,3 +418,16 @@ Prometheus annotations, and probes:
 
 Production clusters should prefer IAM roles for service accounts or Pod Identity
 instead of static access keys.
+
+<script src="https://cdn.jsdelivr.net/npm/plantuml-encoder@1.4.0/dist/plantuml-encoder.min.js"></script>
+<script>
+document.querySelectorAll('.language-plantuml, .language-text').forEach(function(el) {
+    var text = el.textContent;
+    if (text.includes('!include') || text.includes('System_Boundary') || text.includes('Person(')) {
+        var encoded = plantumlEncoder.encode(text);
+        var img = document.createElement('img');
+        img.src = 'https://www.plantuml.com/plantuml/svg/' + encoded;
+        el.parentNode.replaceChild(img, el);
+    }
+});
+</script>
