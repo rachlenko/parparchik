@@ -10,40 +10,40 @@ implementations — same REST API, same environment variables, same MinIO stack.
 
 ## Architecture
 
-```plantuml
-!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+```mermaid
+flowchart TD
+    subgraph Docker["Docker Network"]
+        client(["Client<br/>(curl / app)"])
+        openresty["OpenResty :8080<br/>(Nginx + LuaJIT)"]
+        minio[/"MinIO / S3 :9000"/]
+        
+        client -- "Requests" --> openresty
+        openresty -- "SigV4 signed" --> minio
+        openresty -- "302 redirect" --> client
+    end
 
-System_Boundary(docker, "Docker Network") {
-    Person(client, "Client", "curl / app")
-    Container(openresty, "OpenResty :8080", "Nginx + LuaJIT")
-    System_Ext(minio, "MinIO / S3 :9000")
-    
-    Rel(client, openresty, "Requests")
-    Rel(openresty, minio, "SigV4 signed")
-    Rel(openresty, client, "302 redirect")
-}
-
-System_Boundary(openresty_int, "OpenResty Internals") {
-    Container(nginx_conf, "nginx.conf", "Config", "Routing")
-    Container(handlers, "handlers.lua", "Lua")
-    ContainerDb(registry, "registry.lua", "ngx.shared.DICT")
-    Container(s3_client, "s3.lua", "resty.http")
-    Container(aws_sig, "aws_sig.lua", "SigV4 FFI")
-    Container(metrics_mod, "metrics.lua", "Prometheus")
-    Container(config_mod, "config.lua", "Env vars")
-    
-    Rel(nginx_conf, handlers, "Uses")
-    Rel(handlers, registry, "Uses")
-    Rel(handlers, s3_client, "Uses")
-    Rel(s3_client, aws_sig, "Uses")
-    Rel(handlers, metrics_mod, "Uses")
-    Rel(handlers, config_mod, "Uses")
-}
+    subgraph OpenRestyInt["OpenResty Internals"]
+        direction TB
+        nginx_conf["nginx.conf<br/>(Routing)"]
+        handlers["handlers.lua"]
+        registry[("registry.lua<br/>(ngx.shared.DICT)")]
+        s3_client["s3.lua<br/>(resty.http)"]
+        aws_sig["aws_sig.lua<br/>(SigV4 FFI)"]
+        metrics_mod["metrics.lua<br/>(Prometheus)"]
+        config_mod["config.lua<br/>(Env vars)"]
+        
+        nginx_conf -. "Uses" .-> handlers
+        handlers -. "Uses" .-> registry
+        handlers -. "Uses" .-> s3_client
+        s3_client -. "Uses" .-> aws_sig
+        handlers -. "Uses" .-> metrics_mod
+        handlers -. "Uses" .-> config_mod
+    end
 ```
 
 ## How it works
 
-<div class="mermaid">
+```mermaid
 sequenceDiagram
   participant C as Client
   participant N as OpenResty
@@ -64,11 +64,11 @@ sequenceDiagram
   N->>S: HEAD public-bucket/photo.jpg (verify)
   S-->>N: 200 OK
   N-->>C: 302 → http://minio:9000/public-bucket/photo.jpg
-</div>
+```
 
 ## Module architecture
 
-<div class="mermaid">
+```mermaid
 graph TB
   subgraph Lua Modules
     config[config.lua<br/><i>env var parser</i>]
@@ -95,11 +95,11 @@ graph TB
   end
 
   reg --> dict
-</div>
+```
 
 ## File routing logic
 
-<div class="mermaid">
+```mermaid
 flowchart TD
   req[GET /<prefix>/<key>] --> lookup{Route in<br/>registry?}
   lookup -->|Yes| verify{Object exists<br/>in S3?}
@@ -115,7 +115,7 @@ flowchart TD
   redirect --> public_check{Bucket is<br/>public?}
   public_check -->|Yes| pub_url[Public URL<br/>http://endpoint/bucket/key]
   public_check -->|No| pre_url[Presigned URL<br/>SigV4 query-string signed]
-</div>
+```
 
 ## Quick start
 
@@ -221,19 +221,3 @@ make logs        Tail container logs
 make help        Show all targets
 ```
 
-<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-<script>
-  mermaid.initialize({ startOnLoad: true, theme: 'default' });
-</script>
-<script src="https://cdn.jsdelivr.net/npm/plantuml-encoder@1.4.0/dist/plantuml-encoder.min.js"></script>
-<script>
-document.querySelectorAll('.language-plantuml, .language-text').forEach(function(el) {
-    var text = el.textContent;
-    if (text.includes('!include') || text.includes('System_Boundary') || text.includes('Person(')) {
-        var encoded = plantumlEncoder.encode(text);
-        var img = document.createElement('img');
-        img.src = 'https://www.plantuml.com/plantuml/svg/' + encoded;
-        el.parentNode.replaceChild(img, el);
-    }
-});
-</script>

@@ -28,40 +28,41 @@ or private access, serving redirects to S3 URLs.
 
 ## High-level architecture
 
-```plantuml
-!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
-
-Person(client, "Client", "curl / app")
-
-System_Boundary(service, "parparchik HTTP service") {
-    Container(router, "Request Router", "C++ / OpenResty", "Routes requests")
-    ContainerDb(registry, "File Registry", "Memory", "In-memory metadata")
-    Container(s3client, "S3 Client", "SDK / HTTP", "Communicates with S3")
-    Container(prom, "Metrics", "Prometheus", "/metrics endpoint")
+```mermaid
+flowchart TD
+    client(["Client<br/>(curl / app)"])
     
-    Rel(router, registry, "Queries route")
-    Rel(router, s3client, "Checks S3")
-    Rel(router, prom, "Exposes")
-}
-
-System_Ext(bucket1, "Bucket 1 (public)", "S3")
-System_Ext(bucket2, "Bucket 2 (private)", "S3")
-System_Ext(bucketN, "Bucket N", "S3")
-
-System_Ext(manifest1, "Manifest JSON 1", "S3 object")
-System_Ext(manifest2, "Manifest JSON 2", "S3 object")
-System_Ext(manifestN, "Manifest JSON N", "S3 object")
-
-Rel(client, router, "Requests file")
-Rel(s3client, bucket1, "Reads/Writes")
-Rel(s3client, bucket2, "Reads/Writes")
-Rel(s3client, bucketN, "Reads/Writes")
-
-Rel(bucket1, manifest1, "Stores")
-Rel(bucket2, manifest2, "Stores")
-Rel(bucketN, manifestN, "Stores")
-
-Rel(router, client, "302 redirect")
+    subgraph Service["parparchik HTTP service"]
+        router["Request Router<br/>(C++ / OpenResty)"]
+        registry[("File Registry<br/>(Memory)")]
+        s3client["S3 Client<br/>(SDK / HTTP)"]
+        prom["Metrics<br/>(Prometheus)"]
+        
+        router -- "Queries route" --> registry
+        router -- "Checks S3" --> s3client
+        router -- "Exposes" --> prom
+    end
+    
+    subgraph S3["S3 Storage"]
+        bucket1[/"Bucket 1 (public)"/]
+        bucket2[/"Bucket 2 (private)"/]
+        bucketN[/"Bucket N"/]
+        
+        manifest1[/"Manifest JSON 1"/]
+        manifest2[/"Manifest JSON 2"/]
+        manifestN[/"Manifest JSON N"/]
+        
+        bucket1 -- "Stores" --> manifest1
+        bucket2 -- "Stores" --> manifest2
+        bucketN -- "Stores" --> manifestN
+    end
+    
+    client -- "Requests file" --> router
+    s3client -- "Reads/Writes" --> bucket1
+    s3client -- "Reads/Writes" --> bucket2
+    s3client -- "Reads/Writes" --> bucketN
+    
+    router -- "302 redirect" --> client
 ```
 
 ## Implementation comparison
@@ -79,7 +80,7 @@ Rel(router, client, "302 redirect")
 
 ## Request routing flow
 
-<div class="mermaid">
+```mermaid
 flowchart TD
   req["Incoming request<br/>GET /prefix/key"] --> lookup{"Route exists<br/>in registry?"}
   lookup -->|Yes| verify{"Object exists<br/>in S3 bucket?"}
@@ -97,11 +98,11 @@ flowchart TD
   redirect --> type{"Bucket type?"}
   type -->|Public| pub["Public URL<br/>direct link"]
   type -->|Private| pre["Presigned URL<br/>SigV4 query-string"]
-</div>
+```
 
 ## Startup lifecycle
 
-<div class="mermaid">
+```mermaid
 sequenceDiagram
   participant S as S3 / MinIO
   participant P as parparchik
@@ -123,7 +124,7 @@ sequenceDiagram
   Note over P: Reconcile stale entries
   P->>S: PUT updated manifests
   Note over P,R: ready = true
-</div>
+```
 
 ## Runtime flow
 
@@ -202,19 +203,3 @@ See [Operations](operations.md) for build, run, test, vcpkg cache, and
 Kubernetes instructions. See [Nginx + Lua](nginx-lua.md) for the alternative
 implementation details.
 
-<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-<script>
-  mermaid.initialize({ startOnLoad: true, theme: 'default' });
-</script>
-<script src="https://cdn.jsdelivr.net/npm/plantuml-encoder@1.4.0/dist/plantuml-encoder.min.js"></script>
-<script>
-document.querySelectorAll('.language-plantuml, .language-text').forEach(function(el) {
-    var text = el.textContent;
-    if (text.includes('!include') || text.includes('System_Boundary') || text.includes('Person(')) {
-        var encoded = plantumlEncoder.encode(text);
-        var img = document.createElement('img');
-        img.src = 'https://www.plantuml.com/plantuml/svg/' + encoded;
-        el.parentNode.replaceChild(img, el);
-    }
-});
-</script>

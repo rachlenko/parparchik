@@ -76,35 +76,35 @@ object to public and verifies public wins while private returns to zero entries.
 
 ### Architecture overview
 
-```plantuml
-!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+```mermaid
+flowchart TD
+    subgraph Docker["Docker"]
+        client(["Client"])
+        openresty["OpenResty :8080<br/>(Nginx / Web Server)"]
+        minio[/"MinIO :9000<br/>(S3 Storage)"/]
+        
+        client -- "Requests" --> openresty
+        openresty -- "SigV4" --> minio
+        openresty -- "302 Redirect" --> client
+    end
 
-System_Boundary(docker, "Docker") {
-    Person(client, "Client")
-    Container(openresty, "OpenResty :8080", "Nginx", "Web Server")
-    System_Ext(minio, "MinIO :9000", "S3 Storage")
-    
-    Rel(client, openresty, "Requests")
-    Rel(openresty, minio, "SigV4")
-    Rel(openresty, client, "302 Redirect")
-}
-
-System_Boundary(modules, "Modules") {
-    Container(nginx, "nginx.conf", "Config")
-    Container(handlers, "handlers.lua", "Lua")
-    Container(registry, "registry.lua", "Lua")
-    Container(s3, "s3.lua", "Lua")
-    Container(aws_sig, "aws_sig.lua", "Lua")
-    Container(metrics_mod, "metrics.lua", "Lua")
-    Container(config, "config.lua", "Lua")
-    
-    Rel(nginx, handlers, "Uses")
-    Rel(handlers, registry, "Uses")
-    Rel(handlers, s3, "Uses")
-    Rel(s3, aws_sig, "Uses")
-    Rel(handlers, metrics_mod, "Uses")
-    Rel(handlers, config, "Uses")
-}
+    subgraph Modules["Modules"]
+        direction TB
+        nginx["nginx.conf<br/>(Config)"]
+        handlers["handlers.lua<br/>(Lua)"]
+        registry[("registry.lua<br/>(Lua)")]
+        s3["s3.lua<br/>(Lua)"]
+        aws_sig["aws_sig.lua<br/>(Lua)"]
+        metrics_mod["metrics.lua<br/>(Lua)"]
+        config["config.lua<br/>(Lua)"]
+        
+        nginx -. "Uses" .-> handlers
+        handlers -. "Uses" .-> registry
+        handlers -. "Uses" .-> s3
+        s3 -. "Uses" .-> aws_sig
+        handlers -. "Uses" .-> metrics_mod
+        handlers -. "Uses" .-> config
+    end
 ```
 
 ### Build and run
@@ -419,15 +419,3 @@ Prometheus annotations, and probes:
 Production clusters should prefer IAM roles for service accounts or Pod Identity
 instead of static access keys.
 
-<script src="https://cdn.jsdelivr.net/npm/plantuml-encoder@1.4.0/dist/plantuml-encoder.min.js"></script>
-<script>
-document.querySelectorAll('.language-plantuml, .language-text').forEach(function(el) {
-    var text = el.textContent;
-    if (text.includes('!include') || text.includes('System_Boundary') || text.includes('Person(')) {
-        var encoded = plantumlEncoder.encode(text);
-        var img = document.createElement('img');
-        img.src = 'https://www.plantuml.com/plantuml/svg/' + encoded;
-        el.parentNode.replaceChild(img, el);
-    }
-});
-</script>
