@@ -28,16 +28,8 @@ end
 -- ---------------------------------------------------------------------------
 
 local function make_route(key, bucket_name, buckets)
-    -- Use bucket type prefix (/public/ or /private/) like the Python reference
-    for _, b in ipairs(buckets) do
-        if b.name == bucket_name then
-            if b.is_public then
-                return "/public/" .. key
-            else
-                return "/private/" .. key
-            end
-        end
-    end
+    -- Route format: /<bucket-name>/<key>
+    -- This supports any number of buckets by using the actual bucket name.
     return "/" .. bucket_name .. "/" .. key
 end
 

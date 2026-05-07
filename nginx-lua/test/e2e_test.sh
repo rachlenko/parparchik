@@ -122,17 +122,16 @@ update_body=$(curl -sf "${APP_URL}/update?filename=${TEST_FILE}")
 assert_contains "update returns file key" '"key"' "$update_body"
 assert_contains "update returns file info" 'testfile.txt' "$update_body"
 assert_contains "file is in public bucket" 'bucket_type.*public' "$update_body"
-# Handle both JSON escaped (\/) and unescaped (/) slashes
-assert_contains "route contains /public/" 'public.*testfile.txt' "$update_body"
+assert_contains "route contains /public-bucket/" 'public-bucket.*testfile.txt' "$update_body"
 
 echo "  Response: ${update_body}"
 
 # ─────────────────────────────────────────────
-#  Step 4: Download via /public/ route
+#  Step 4: Download via /<bucket-name>/ route
 # ─────────────────────────────────────────────
-echo -e "\n${YELLOW}--- Step 4: Download from /public/ route ---${NC}"
+echo -e "\n${YELLOW}--- Step 4: Download from /public-bucket/ route ---${NC}"
 
-download_url=$(curl -s -o /dev/null -w "%{redirect_url}" "${APP_URL}/public/${TEST_FILE}")
+download_url=$(curl -s -o /dev/null -w "%{redirect_url}" "${APP_URL}/${PUBLIC_BUCKET}/${TEST_FILE}")
 assert_contains "Redirect points to public bucket" "${PUBLIC_BUCKET}" "$download_url"
 
 downloaded=$(curl -sf "${download_url}")
@@ -168,16 +167,16 @@ echo -e "\n${YELLOW}--- Step 6: /list ---${NC}"
 list_body=$(curl -sf "${APP_URL}/list")
 assert_contains "/list shows private type" 'bucket_type.*private' "$list_body"
 assert_contains "/list shows private bucket" "private-bucket" "$list_body"
-assert_contains "/list route updated to /private/" 'private.*testfile.txt' "$list_body"
+assert_contains "/list route updated to /private-bucket/" 'private-bucket.*testfile.txt' "$list_body"
 
 echo "  Response: ${list_body}"
 
 # ─────────────────────────────────────────────
-#  Step 7: Old /public/ route returns 404
+#  Step 7: Old /public-bucket/ route returns 404 (file was moved)
 # ─────────────────────────────────────────────
-echo -e "\n${YELLOW}--- Step 7: Old public route is 404 ---${NC}"
+echo -e "\n${YELLOW}--- Step 7: Old public-bucket route is 404 ---${NC}"
 
-assert_http_status "GET /public/${TEST_FILE} returns 404" "404" "${APP_URL}/public/${TEST_FILE}"
+assert_http_status "GET /${PUBLIC_BUCKET}/${TEST_FILE} returns 404" "404" "${APP_URL}/${PUBLIC_BUCKET}/${TEST_FILE}"
 
 # ─────────────────────────────────────────────
 #  Step 8: /update shows file now in private
@@ -186,14 +185,14 @@ echo -e "\n${YELLOW}--- Step 8: /update shows file in private ---${NC}"
 
 update_body2=$(curl -sf "${APP_URL}/update?filename=${TEST_FILE}")
 assert_contains "update shows private type" 'bucket_type.*private' "$update_body2"
-assert_contains "route changed to /private/" 'private.*testfile.txt' "$update_body2"
+assert_contains "route changed to /private-bucket/" 'private-bucket.*testfile.txt' "$update_body2"
 
 # ─────────────────────────────────────────────
-#  Step 9: Download via new /private/ route
+#  Step 9: Download via new /private-bucket/ route
 # ─────────────────────────────────────────────
-echo -e "\n${YELLOW}--- Step 9: Download from /private/ route ---${NC}"
+echo -e "\n${YELLOW}--- Step 9: Download from /private-bucket/ route ---${NC}"
 
-redirect_url2=$(curl -s -o /dev/null -w "%{redirect_url}" "${APP_URL}/private/${TEST_FILE}")
+redirect_url2=$(curl -s -o /dev/null -w "%{redirect_url}" "${APP_URL}/${PRIVATE_BUCKET}/${TEST_FILE}")
 assert_contains "Redirect points to private bucket" "${PRIVATE_BUCKET}" "$redirect_url2"
 
 downloaded2=$(curl -sf "${redirect_url2}")

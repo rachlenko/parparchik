@@ -182,21 +182,7 @@ local function resolve_route(route)
         return nil
     end
 
-    -- Try extracting key from route: /public/<key> or /private/<key>
-    local prefix_type, key = route:match("^/(public)/(.+)$")
-    if not prefix_type then
-        prefix_type, key = route:match("^/(private)/(.+)$")
-    end
-    if key then
-        local resolved = resolve_missing_file(key)
-        -- Only return if the resolved entry's route matches the requested route
-        if resolved and resolved.route == route then
-            return resolved
-        end
-        return nil
-    end
-
-    -- Also try /<bucket-name>/<key>
+    -- Extract key from route: /<bucket-name>/<key>
     for _, bucket in ipairs(cfg.buckets) do
         local bprefix = "/" .. bucket.name .. "/"
         if route:sub(1, #bprefix) == bprefix then
