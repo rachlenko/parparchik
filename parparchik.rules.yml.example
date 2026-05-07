@@ -1,0 +1,17 @@
+groups:
+  - name: parparchik
+    rules:
+      - alert: ParparchikDuplicateFiles
+        expr: parparchik_duplicate_files > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: parparchik
+        annotations:
+          summary: "Duplicate files detected across S3 buckets"
+          description: >-
+            {{ $value }} file key(s) exist in more than one S3 bucket.
+            Parparchik registers the highest-priority copy, but the
+            extra copies waste storage and may cause confusion if
+            bucket priority changes. Run POST /relocate for each
+            affected key to consolidate.

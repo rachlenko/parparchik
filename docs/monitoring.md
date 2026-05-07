@@ -12,18 +12,29 @@ misses.
 
 | Metric | Type | Description |
 | --- | --- | --- |
-| `parparchik_volume_files{volume="public"}` | gauge | Current public bucket registry count. |
-| `parparchik_volume_files{volume="private"}` | gauge | Current private bucket registry count. |
+| `parparchik_volume_files{volume="<bucket>"}` | gauge | Current file count for each configured bucket. |
+| `parparchik_duplicate_files` | gauge | Number of file keys that exist in more than one S3 bucket. |
 | `parparchik_uploads_per_week` | gauge | Files modified during the last 7 days. |
 | `parparchik_uploads_per_month` | gauge | Files modified during the last 31 days. |
+
+## Alerts
+
+`parparchik.rules.yml.example` defines Prometheus alert rules:
+
+| Alert | Condition | Severity | Description |
+| --- | --- | --- | --- |
+| `ParparchikDuplicateFiles` | `parparchik_duplicate_files > 0` for 5m | warning | One or more file keys exist in multiple S3 buckets. The highest-priority copy is served, but duplicates waste storage and may cause confusion. |
+
+`alertmanager.conf.example` routes `ParparchikDuplicateFiles` to a dedicated
+`parparchik-duplicates` receiver with a 12-hour repeat interval to avoid noise.
 
 ## Example configs
 
 - `prometheus.conf.example` scrapes `parparchik:8080/metrics`.
-- `alertmanager.conf.example` provides a local webhook-style receiver example.
+- `parparchik.rules.yml.example` defines Prometheus alert rules including duplicate file detection.
+- `alertmanager.conf.example` provides a local webhook-style receiver example with a dedicated route for duplicate alerts.
 - `grafana-parparchik-desktop.example` is an importable Grafana dashboard JSON
-  with prepared panels and alert lines for public/private file counts and recent
-  uploads.
+  with prepared panels and alert lines for file counts and recent uploads.
 
 ## Mock metrics test
 

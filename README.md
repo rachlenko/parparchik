@@ -6,13 +6,13 @@
 
 [![Documentation](https://img.shields.io/badge/docs-rachlenko.github.io%2Fparparchik-blue)](https://rachlenko.github.io/parparchik/)
 
-S3 file routing web service. Exposes files from public and private S3 buckets
+S3 file routing web service. Exposes files from configured S3 buckets
 behind dynamic HTTP routes. When a file moves between buckets, its route
 updates automatically — clients always hit the same logical endpoint.
 
 ## Architecture
 
-```
+```ini
 ┌─────────────┐       ┌──────────────────┐       ┌──────────────┐
 │   Client    │──────▶│   parparchik     │──────▶│  S3 / MinIO  │
 │  (curl/app) │◀──302─│   :8080          │       │  buckets     │
@@ -22,9 +22,9 @@ updates automatically — clients always hit the same logical endpoint.
                                `.parparchik/files.json`
 ```
 
-**File in public bucket** → route is `/public/<key>` → redirect to public S3 URL.
+**File in public bucket** → route is `/<bucket>/<key>` → redirect to public S3 URL.
 
-**File in private bucket** → route is `/private/<key>` → redirect to presigned URL.
+**File in private bucket** → route is `/<bucket>/<key>` → redirect to presigned URL.
 
 The in-memory registry is loaded from JSON manifests stored in both buckets.
 When a requested key is missing or stale, the service checks the real S3 objects,
@@ -68,8 +68,7 @@ MinIO console is at http://localhost:9001 (user: `minioadmin`, password: `minioa
 | GET    | `/update?filename=<name>`  | Sync and return current location of a file         |
 | POST   | `/relocate?filename=<name>`| Verify file, relocate between buckets, return ok/fail |
 | GET    | `/metrics`                 | Prometheus metrics for file volumes and uploads    |
-| GET    | `/public/<key>`            | 302 redirect to public S3 URL                      |
-| GET    | `/private/<key>`           | 302 redirect to presigned S3 URL (1h expiry)       |
+| GET    | `/<bucket>/<key>`          | 302 redirect to S3 URL (public or presigned)       |
 
 ## Argo CD deployment
 
@@ -81,10 +80,17 @@ annotations, and probes wired to `/redines` and `/helthcheck`.
 
 `/metrics` renders the current in-memory registry state and exposes:
 
-- `parparchik_volume_files{volume="public"}` — current public volume file count.
-- `parparchik_volume_files{volume="private"}` — current private volume file count.
+- `parparchik_volume_files{volume="<bucket>"}` — current file count for each configured bucket.
+- `parparchik_duplicate_files` — number of file keys that exist in more than one S3 bucket.
 - `parparchik_uploads_per_week` — known file versions modified during the last 7 days.
 - `parparchik_uploads_per_month` — known file versions modified during the last 31 days.
+
+### Duplicate file alert
+
+`parparchik.rules.yml.example` provides a Prometheus alert rule
+`ParparchikDuplicateFiles` that fires when `parparchik_duplicate_files > 0` for
+5 minutes. `alertmanager.conf.example` routes this alert to a dedicated
+`parparchik-duplicates` receiver with a 12-hour repeat interval.
 
 ### Example flow
 
@@ -94,21 +100,21 @@ mc cp photo.jpg myminio/public-bucket/photo.jpg
 
 # 2. Query the service
 curl http://localhost:8080/update?filename=photo.jpg
-# → {"file": {"route": "/public/photo.jpg", "bucket_type": "public", ...}}
+# → {"file": {"route": "/public-bucket/photo.jpg", "bucket": "public-bucket", ...}}
 
 # 3. Download via the route
-curl -L http://localhost:8080/public/photo.jpg -o photo.jpg
+curl -L http://localhost:8080/public-bucket/photo.jpg -o photo.jpg
 
 # 4. Move the file to private (externally)
 mc mv myminio/public-bucket/photo.jpg myminio/private-bucket/photo.jpg
 
 # 5. The route updates on next access
 curl http://localhost:8080/list
-# → {"files": [{"route": "/private/photo.jpg", "bucket_type": "private", ...}]}
+# → {"files": [{"route": "/private-bucket/photo.jpg", "bucket": "private-bucket", ...}]}
 
 # 6. Old route returns 404, new route works
-curl -I http://localhost:8080/public/photo.jpg   # 404
-curl -L http://localhost:8080/private/photo.jpg   # 302 → presigned URL → download
+curl -I http://localhost:8080/public-bucket/photo.jpg    # 404
+curl -L http://localhost:8080/private-bucket/photo.jpg   # 302 → presigned URL → download
 ```
 
 ## Building the C++ binary
@@ -127,7 +133,7 @@ sccache) are managed by the `../vcpkgproxy` sibling repository.
 The `../vcpkgproxy` repo acts as a local mirror for all upstream dependencies.
 After a one-time sync, builds work fully offline.
 
-```
+```ini
 vcpkgproxy/
 ├── vcpkg/            git clone of github.com/microsoft/vcpkg (registry)
 ├── downloads/        source tarballs (github.com/awslabs/*, mozilla/sccache, etc.)
@@ -153,12 +159,14 @@ make build-all
 ```
 
 `make sync` downloads into vcpkgproxy:
+
 - vcpkg registry from `github.com/microsoft/vcpkg`
 - sccache binary from `github.com/mozilla/sccache/releases`
 - All source tarballs for dependencies declared in `vcpkg.json`
 - Compiles and caches binary packages locally
 
 `make build-all` uses only local files:
+
 - Restores 23 pre-built packages from `vcpkgproxy/binary-cache/`
 - Installs headers and libs to `vcpkgproxy/installed/`
 - Configures CMake with the vcpkg toolchain
@@ -166,15 +174,15 @@ make build-all
 
 In short, `vcpkgproxy` gives this project two caches:
 
-- **Download cache**: `VCPKG_DOWNLOADS=../vcpkgproxy/downloads` keeps upstream
-  source archives local, so repeated dependency installs do not fetch the
-  internet again.
-- **Binary package cache**: `VCPKG_DEFAULT_BINARY_CACHE=../vcpkgproxy/binary-cache`
-  keeps compiled vcpkg packages as archives, so clean builds can restore
-  dependencies instead of rebuilding AWS SDK, Prometheus, and other libraries.
+- __Download cache__: `VCPKG_DOWNLOADS=../vcpkgproxy/downloads` keeps upstream
+   source archives local, so repeated dependency installs do not fetch the
+   internet again.
+- __Binary package cache__: `VCPKG_DEFAULT_BINARY_CACHE=../vcpkgproxy/binary-cache`
+   keeps compiled vcpkg packages as archives, so clean builds can restore
+   dependencies instead of rebuilding AWS SDK, Prometheus, and other libraries.
 - **Compiler cache**: `sccache` is placed first in `PATH` and configured as the
-  C/C++ compiler launcher, so repeated project compiles reuse cached object
-  files when compiler flags and inputs match.
+   C/C++ compiler launcher, so repeated project compiles reuse cached object
+   files when compiler flags and inputs match.
 
 The Makefile wires this automatically:
 
@@ -254,96 +262,95 @@ make run-native
 
 1. Create two S3 buckets in the AWS console or CLI:
 
-    ```bash
-    aws s3 mb s3://my-public-bucket --region us-east-1
-    aws s3 mb s3://my-private-bucket --region us-east-1
-    ```
+```bash
+aws s3 mb s3://my-public-bucket --region us-east-1
+aws s3 mb s3://my-private-bucket --region us-east-1
+```
 
 2. Make the public bucket publicly readable:
 
-    ```bash
-    aws s3api put-bucket-policy --bucket my-public-bucket --policy '{
-      "Version": "2012-10-17",
-      "Statement": [{
-        "Effect": "Allow",
-        "Principal": "*",
-        "Action": "s3:GetObject",
-        "Resource": "arn:aws:s3:::my-public-bucket/*"
-      }]
-    }'
-    ```
+```bash
+aws s3api put-bucket-policy --bucket my-public-bucket --policy '{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": "*",
+    "Action": "s3:GetObject",
+    "Resource": "arn:aws:s3:::my-public-bucket/*"
+  }]
+}'
+```
 
 3. Keep the private bucket with default access (private). Parparchik generates
    presigned URLs for private files automatically.
 
 4. Create an IAM user or role with read/write access to both buckets. The
-   minimum policy is:
+minimum policy is:
 
-    ```json
-    {
-      "Version": "2012-10-17",
-      "Statement": [{
-        "Effect": "Allow",
-        "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject",
-                   "s3:ListBucket", "s3:HeadObject"],
-        "Resource": [
-          "arn:aws:s3:::my-public-bucket", "arn:aws:s3:::my-public-bucket/*",
-          "arn:aws:s3:::my-private-bucket", "arn:aws:s3:::my-private-bucket/*"
-        ]
-      }]
-    }
-    ```
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject",
+               "s3:ListBucket", "s3:HeadObject"],
+    "Resource": [
+      "arn:aws:s3:::my-public-bucket", "arn:aws:s3:::my-public-bucket/*",
+      "arn:aws:s3:::my-private-bucket", "arn:aws:s3:::my-private-bucket/*"
+    ]
+  }]
+}
+```
 
 5. Configure parparchik:
 
-    ```bash
-    export PARPARCHIK_PUBLIC_BUCKET=my-public-bucket
-    export PARPARCHIK_PRIVATE_BUCKET=my-private-bucket
-    export AWS_REGION=us-east-1
-    export AWS_ACCESS_KEY_ID=AKIA...
-    export AWS_SECRET_ACCESS_KEY=...
-    ```
+```bash
+export PARPARCHIK_BUCKETS=my-public-bucket:.parparchik/files.json:public,my-private-bucket:.parparchik/files.json
+export AWS_REGION=us-east-1
+export AWS_ACCESS_KEY_ID=AKIA...
+export AWS_SECRET_ACCESS_KEY=...
+```
 
 6. Start the service:
 
-    ```bash
-    make run-native
-    ```
+```bash
+make run-native
+```
 
 7. Verify both buckets are connected:
 
-    ```bash
-    curl http://localhost:8080/status
-    ```
+```bash
+curl http://localhost:8080/status
+```
 
 #### Option B — MinIO (local development)
 
 1. Start MinIO and parparchik with Docker Compose:
 
-    ```bash
-    make run-docker
-    ```
+```bash
+make run-docker
+```
 
-    This automatically creates `public-bucket` and `private-bucket` in MinIO
-    and configures parparchik to use them.
+This automatically creates `public-bucket` and `private-bucket` in MinIO
+and configures parparchik to use them.
 
 2. Open the MinIO console at http://localhost:9001 (user: `minioadmin`,
    password: `minioadmin`) to inspect buckets.
 
 3. Verify the service:
 
-    ```bash
-    curl http://localhost:8080/status
-    ```
+```bash
+curl http://localhost:8080/status
+```
 
 4. Upload a test file and confirm routing:
 
-    ```bash
-    mc alias set local http://localhost:9000 minioadmin minioadmin
-    mc cp testfile.txt local/public-bucket/testfile.txt
-    curl http://localhost:8080/update?filename=testfile.txt
-    curl -L http://localhost:8080/public/testfile.txt
-    ```
+```bash
+mc alias set local http://localhost:9000 minioadmin minioadmin
+mc cp testfile.txt local/public-bucket/testfile.txt
+curl http://localhost:8080/update?filename=testfile.txt
+curl -L http://localhost:8080/public-bucket/testfile.txt
+```
 
 ### Environment variables
 
@@ -351,9 +358,9 @@ All configuration is via environment variables:
 
 | Variable | Required | Default | Description |
 | --- | --- | --- | --- |
-| `PARPARCHIK_PUBLIC_BUCKET` | yes | | Name of the public S3 bucket |
-| `PARPARCHIK_PRIVATE_BUCKET` | yes | | Name of the private S3 bucket |
-| `PARPARCHIK_REGISTRY_MANIFEST_KEY` | no | `.parparchik/files.json` | Manifest object key stored in both buckets |
+| `PARPARCHIK_BUCKETS` | yes* | | Comma-separated bucket list: `name:manifest_key:public` (`:public` suffix marks public buckets, manifest key defaults to `.parparchik/files.json`) |
+| `PARPARCHIK_PUBLIC_BUCKET` | yes* | | Legacy: name of the public S3 bucket |
+| `PARPARCHIK_PRIVATE_BUCKET` | yes* | | Legacy: name of the private S3 bucket |
 | `AWS_REGION` | no | `us-east-1` | AWS region |
 | `S3_ENDPOINT` | no | | Custom S3 endpoint for MinIO/S3-compatible storage |
 | `S3_EXTERNAL_ENDPOINT` | no | | Externally reachable S3 endpoint for generated URLs |
@@ -362,29 +369,31 @@ All configuration is via environment variables:
 | `PARPARCHIK_HOST` | no | `0.0.0.0` | Listen address |
 | `PARPARCHIK_PORT` | no | `8080` | Listen port |
 
+*Set either `PARPARCHIK_BUCKETS` or both `PARPARCHIK_PUBLIC_BUCKET` and
+`PARPARCHIK_PRIVATE_BUCKET`. The legacy variables are supported for backward
+compatibility and create two buckets with the default manifest key.
+
 When running in Docker with MinIO, `S3_ENDPOINT` points to the internal Docker
 hostname (`minio:9000`) and `S3_EXTERNAL_ENDPOINT` to the host-reachable address
 (`localhost:9000`) so presigned URLs work from outside the container network.
 
 ### S3 JSON manifest registry
 
-At startup, parparchik reads `PARPARCHIK_REGISTRY_MANIFEST_KEY` from the public
-and private buckets into memory. If neither manifest exists, it scans both
-buckets, builds the registry, writes manifests back to both buckets, and only
-then marks readiness as healthy.
+At startup, parparchik reads each bucket's manifest using its configured key.
+If any manifest is missing, it scans all buckets, builds the registry, writes
+manifests back, and only then marks readiness as healthy.
 
 Manifest format:
 
 ```json
 {
   "version": 1,
-  "bucket_type": "public",
+  "bucket": "my-public-bucket",
   "files": [
     {
       "key": "example.tgz",
-      "bucket": "public-bucket",
-      "bucket_type": "public",
-      "route": "/public/example.tgz",
+      "bucket": "my-public-bucket",
+      "route": "/my-public-bucket/example.tgz",
       "size": 1048576,
       "last_modified": "2026-05-05T10:00:00Z"
     }
@@ -394,23 +403,23 @@ Manifest format:
 
 Conflict rules:
 
-- If the same key exists in both real buckets, the public object is registered.
+- If the same key exists in multiple buckets, the highest-priority bucket (first in config) wins.
 - If manifest records disagree, parparchik verifies actual S3 object existence.
-- If a requested key is missing from memory, parparchik searches public first,
-  then private, returns the found file route, and persists repaired manifests.
+- If a requested key is missing from memory, parparchik searches buckets in priority order,
+  returns the found file route, and persists repaired manifests.
 - If a manifest record points to a missing object, the stale record is removed.
 
 ### Kubernetes probes
 
 - `/helthcheck` returns HTTP 200 when the process is alive. `/healthcheck` is
-  available as a spelling-safe alias.
+   available as a spelling-safe alias.
 - `/redines` returns HTTP 200 only after S3 JSON manifest load and initial S3 sync have
-  completed. Before that it returns HTTP 503. `/readiness` is available as a
-  spelling-safe alias.
+   completed. Before that it returns HTTP 503. `/readiness` is available as a
+   spelling-safe alias.
 
 ## Project structure
 
-```
+```ini
 parparchik/
 ├── CMakeLists.txt          C++ build definition
 ├── CMakePresets.json        CMake presets (vcpkg + sccache)
@@ -456,7 +465,7 @@ parparchik/
 
 ## Makefile targets
 
-```
+```md
 make help               Show all targets
 
 make sync               Download all deps into vcpkgproxy (online)

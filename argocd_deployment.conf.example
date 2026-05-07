@@ -43,9 +43,7 @@ metadata:
   name: parparchik-config
   namespace: parparchik
 data:
-  PARPARCHIK_PUBLIC_BUCKET: public-bucket
-  PARPARCHIK_PRIVATE_BUCKET: private-bucket
-  PARPARCHIK_REGISTRY_MANIFEST_KEY: .parparchik/files.json
+  PARPARCHIK_BUCKETS: public-bucket:.parparchik/files.json:public,private-bucket:.parparchik/files.json
   AWS_REGION: us-east-1
   PARPARCHIK_HOST: "0.0.0.0"
   PARPARCHIK_PORT: "8080"

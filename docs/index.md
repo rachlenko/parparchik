@@ -8,19 +8,18 @@ icon: lucide/box
   <img src="assets/logo.png" alt="parparchik logo" width="200">
 </p>
 
-`parparchik` is a C++20 service that routes versioned files from two S3 buckets:
-public and private. Public files are redirected to public S3 URLs. Private files
-are redirected to short-lived presigned URLs.
+`parparchik` is a C++20 service that routes versioned files from multiple configurable S3 buckets. Each bucket can be public or private, with its own manifest key. Public files are redirected to public S3 URLs. Private files are redirected to short-lived presigned URLs.
 
 ## Features
 
-- Dynamic `/public/<key>` and `/private/<key>` file routes.
-- In-memory file registry loaded from JSON manifests stored in both buckets.
+- Dynamic `/<bucket>/<key>` file routes for each configured bucket.
+- In-memory file registry loaded from JSON manifests stored in each bucket.
 - Startup backfill from S3 when manifests do not exist yet.
-- Public bucket precedence when the same key exists in public and private.
+- Bucket priority precedence when the same key exists in multiple buckets.
 - Runtime repair when manifests are stale or disagree with real bucket contents.
 - `/status`, `/redines`, `/readiness`, `/helthcheck`, and `/healthcheck` probes.
-- Prometheus metrics for public/private file counts and recent uploads.
+- Prometheus metrics for file counts per bucket, duplicate detection, and recent uploads.
+- Prometheus alert rule for duplicate files across S3 buckets.
 - Prometheus, Alertmanager, Grafana, Docker Compose, and Argo CD examples.
 
 ## Architecture
@@ -28,37 +27,34 @@ are redirected to short-lived presigned URLs.
 ```mermaid
 flowchart LR
   client[Client] --> app[parparchik HTTP service]
-  app --> public[(Public S3 bucket)]
-  app --> private[(Private S3 bucket)]
-  public --> publicManifest[.parparchik/files.json]
-  private --> privateManifest[.parparchik/files.json]
+  app --> bucket1[(Bucket 1)]
+  app --> bucket2[(Bucket 2)]
+  app --> bucketN[(Bucket N)]
+  bucket1 --> manifest1[Manifest]
+  bucket2 --> manifest2[Manifest]
+  bucketN --> manifestN[Manifest]
   app --> metrics[/metrics]
 ```
 
 ## Runtime flow
 
-1. Startup reads `PARPARCHIK_REGISTRY_MANIFEST_KEY` from both buckets.
-2. If neither manifest exists, parparchik scans public and private buckets,
-   builds the in-memory registry, writes manifests back, and becomes ready.
-3. If manifests exist, parparchik loads them and verifies each record against
-   actual S3 object existence.
-4. If the same key exists in both buckets, public wins and private manifest
-   records are removed for that key.
-5. On request miss or stale route, parparchik checks public first, then private,
-   serves the found route, updates memory, and writes both manifests.
+1. Startup reads manifests from all configured buckets using their respective keys.
+2. If any manifest is missing, parparchik scans all buckets, builds the in-memory registry, writes manifests back, and becomes ready.
+3. If manifests exist, parparchik loads them and verifies each record against actual S3 object existence.
+4. If the same key exists in multiple buckets, the highest priority bucket (first in config) wins.
+5. On request miss or stale route, parparchik checks buckets in priority order, serves the found route, updates memory, and writes all manifests.
 
 ## Manifest format
 
 ```json
 {
   "version": 1,
-  "bucket_type": "private",
+  "bucket": "private-bucket",
   "files": [
     {
       "key": "1mb_v0.0.1_file.tgz",
       "bucket": "private-bucket",
-      "bucket_type": "private",
-      "route": "/private/1mb_v0.0.1_file.tgz",
+      "route": "/private-bucket/1mb_v0.0.1_file.tgz",
       "size": 1048576,
       "last_modified": "2026-05-05T10:00:00Z"
     }
@@ -75,10 +71,21 @@ flowchart LR
 | `/update?filename=<key>` | Resolve a key and repair manifests on miss/stale state. |
 | `POST /relocate?filename=<key>` | Verify file location, relocate registry entry between buckets. Private wins on duplicate. |
 | `/metrics` | Prometheus metrics. |
-| `/public/<key>` | Redirect to public S3 URL. |
-| `/private/<key>` | Redirect to presigned S3 URL, or public URL if public wins. |
+| `/<bucket>/<key>` | Redirect to S3 URL (public or presigned based on bucket config). |
 | `/redines`, `/readiness` | Readiness probe. |
 | `/helthcheck`, `/healthcheck` | Liveness probe. |
+
+## Monitoring
+
+`/metrics` exposes Prometheus gauges:
+
+- `parparchik_volume_files{volume="<bucket>"}` — file count per bucket.
+- `parparchik_duplicate_files` — file keys present in more than one bucket.
+- `parparchik_uploads_per_week` / `parparchik_uploads_per_month` — recent upload activity.
+
+`parparchik.rules.yml.example` defines a `ParparchikDuplicateFiles` alert that
+fires when duplicates persist for 5 minutes. See [Monitoring](monitoring.md) for
+full config examples.
 
 ## Common commands
 

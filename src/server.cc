@@ -75,7 +75,7 @@ void Server::RegisterRoutes() {
              });
 
   for (const auto& bucket : config_.buckets) {
-    std::string pattern = "/" + bucket + "/(.+)";
+    std::string pattern = "/" + bucket.name + "/(.+)";
     http_.Get(pattern,
               [this](const httplib::Request& req, httplib::Response& res) {
                 HandleFileDownload(req, res);
@@ -85,15 +85,18 @@ void Server::RegisterRoutes() {
 
 void Server::SyncRegistry() {
   std::unordered_set<std::string> seen;
+  std::unordered_set<std::string> duplicates;
 
   for (const auto& bucket : config_.buckets) {
-    auto objects = s3_->ListObjects(bucket);
+    auto objects = s3_->ListObjects(bucket.name);
     for (const auto& obj : objects) {
-      if (obj.key == config_.registry_manifest_key) {
+      if (obj.key == bucket.manifest_key) {
         continue;
       }
       if (!seen.contains(obj.key)) {
-        registry_->RegisterFile(obj.key, bucket, obj.size, obj.last_modified);
+        registry_->RegisterFile(obj.key, bucket.name, obj.size, obj.last_modified);
+      } else {
+        duplicates.insert(obj.key);
       }
       seen.insert(obj.key);
     }
@@ -105,11 +108,13 @@ void Server::SyncRegistry() {
     }
   }
 
+  metrics_->SetDuplicateFiles(static_cast<int>(duplicates.size()));
   PersistRegistryManifests();
   RefreshMetrics();
 
   std::cout << "Registry synced across " << config_.buckets.size()
-            << " buckets" << std::endl;
+            << " buckets (" << duplicates.size() << " duplicates)"
+            << std::endl;
 }
 
 void Server::LoadRegistryManifests() {
@@ -119,8 +124,8 @@ void Server::LoadRegistryManifests() {
   for (const auto& bucket : config_.buckets) {
     std::string content;
     bool found = s3_->TryGetObjectContent(
-        bucket, config_.registry_manifest_key, &content);
-    manifests.emplace_back(bucket, content);
+        bucket.name, bucket.manifest_key, &content);
+    manifests.emplace_back(bucket.name, content);
     if (!found) {
       all_present = false;
     }
@@ -139,12 +144,12 @@ void Server::BackfillRegistryFromBuckets() {
   std::unordered_set<std::string> seen;
 
   for (const auto& bucket : config_.buckets) {
-    for (const auto& object : s3_->ListObjects(bucket)) {
-      if (object.key == config_.registry_manifest_key) {
+    for (const auto& object : s3_->ListObjects(bucket.name)) {
+      if (object.key == bucket.manifest_key) {
         continue;
       }
       if (!seen.contains(object.key)) {
-        registry_->RegisterFile(object.key, bucket, object.size,
+        registry_->RegisterFile(object.key, bucket.name, object.size,
                                 object.last_modified);
       }
       seen.insert(object.key);
@@ -153,40 +158,48 @@ void Server::BackfillRegistryFromBuckets() {
 }
 
 void Server::ReconcileRegistryWithBuckets() {
+  int duplicates = 0;
   for (const auto& entry : registry_->ListAll()) {
-    bool found = false;
+    int bucket_count = 0;
+    bool registered = false;
     for (const auto& bucket : config_.buckets) {
-      const auto object = s3_->HeadObject(bucket, entry.key);
+      const auto object = s3_->HeadObject(bucket.name, entry.key);
       if (object.has_value()) {
-        registry_->RegisterFile(entry.key, bucket, object->size,
-                                object->last_modified);
-        found = true;
-        break;
+        if (!registered) {
+          registry_->RegisterFile(entry.key, bucket.name, object->size,
+                                  object->last_modified);
+          registered = true;
+        }
+        ++bucket_count;
       }
     }
-    if (!found) {
+    if (!registered) {
       registry_->Remove(entry.key);
     }
+    if (bucket_count > 1) {
+      ++duplicates;
+    }
   }
+  metrics_->SetDuplicateFiles(duplicates);
 }
 
 void Server::PersistRegistryManifests() {
   for (const auto& bucket : config_.buckets) {
     const std::string manifest =
-        registry_->ManifestForBucket(bucket).dump(2);
-    if (!s3_->PutObjectContent(bucket, config_.registry_manifest_key,
+        registry_->ManifestForBucket(bucket.name).dump(2);
+    if (!s3_->PutObjectContent(bucket.name, bucket.manifest_key,
                                manifest, "application/json")) {
       throw std::runtime_error(
-          "Failed to write registry manifest to S3 bucket: " + bucket);
+          "Failed to write registry manifest to S3 bucket: " + bucket.name);
     }
   }
 }
 
 std::optional<FileEntry> Server::ResolveMissingFile(const std::string& key) {
   for (const auto& bucket : config_.buckets) {
-    const auto object = s3_->HeadObject(bucket, key);
+    const auto object = s3_->HeadObject(bucket.name, key);
     if (object.has_value()) {
-      registry_->RegisterFile(key, bucket, object->size, object->last_modified);
+      registry_->RegisterFile(key, bucket.name, object->size, object->last_modified);
       PersistRegistryManifests();
       RefreshMetrics();
       return registry_->Lookup(key);
@@ -210,7 +223,7 @@ std::optional<FileEntry> Server::ResolveRoute(const std::string& route) {
   }
 
   for (const auto& bucket : config_.buckets) {
-    const std::string prefix = "/" + bucket + "/";
+    const std::string prefix = "/" + bucket.name + "/";
     if (route.starts_with(prefix)) {
       return ResolveMissingFile(route.substr(prefix.size()));
     }
@@ -225,8 +238,9 @@ void Server::HandleStatus(const httplib::Request& /*req*/,
   nlohmann::json bucket_list = nlohmann::json::array();
   for (const auto& bucket : config_.buckets) {
     bucket_list.push_back({
-        {"name", bucket},
-        {"public", config_.IsBucketPublic(bucket)},
+        {"name", bucket.name},
+        {"manifest_key", bucket.manifest_key},
+        {"public", bucket.is_public},
     });
   }
 
@@ -234,7 +248,6 @@ void Server::HandleStatus(const httplib::Request& /*req*/,
       {"status", "ok"},
       {"buckets", bucket_list},
       {"region", config_.aws_region},
-      {"registry_manifest_key", config_.registry_manifest_key},
       {"ready", ready_.load()},
       {"file_count", registry_->ListAll().size()},
   };
@@ -336,9 +349,9 @@ void Server::HandleRelocate(const httplib::Request& req,
   int found_count = 0;
 
   for (const auto& bucket : config_.buckets) {
-    const auto object = s3_->HeadObject(bucket, filename);
+    const auto object = s3_->HeadObject(bucket.name, filename);
     if (object.has_value()) {
-      target_bucket = bucket;
+      target_bucket = bucket.name;
       target_object = *object;
       ++found_count;
     }

@@ -6,7 +6,9 @@ monitoring configuration, or operational workflows.
 ## Project summary
 
 `parparchik` is a C++20 S3 file routing service using `cpp-httplib`, AWS SDK for
-C++ S3, `nlohmann-json`, and `prometheus-cpp` via vcpkg.
+C++ S3, `nlohmann-json`, and `prometheus-cpp` via vcpkg. It supports multiple
+configurable S3 buckets, each with its own manifest key, allowing flexible
+file routing with public or private access.
 
 ## Important files
 
@@ -16,7 +18,7 @@ C++ S3, `nlohmann-json`, and `prometheus-cpp` via vcpkg.
 - `src/metrics.cc` — Prometheus gauges and text rendering.
 - `Makefile` — canonical build, run, test, and docs commands.
 - `test/mock_s3_manifest_metrics_test.sh` — mock private/public metrics and
-  manifest verification scenario.
+   manifest verification scenario.
 - `argocd_deployment.conf.example` — Argo CD/Kubernetes deployment starter.
 - `docs/` and `zensical.toml` — Zensical source site and generated static site output.
 - `docs/assets/logo.png` — project logo used in README and website.
@@ -45,28 +47,23 @@ make docs-site
 
 - Dependencies are resolved through the sibling `../vcpkgproxy` repository.
 - `make sync` is the online step that fills `vcpkg/`, `downloads/`,
-  `binary-cache/`, and cached helper binaries such as `sccache`.
+   `binary-cache/`, and cached helper binaries such as `sccache`.
 - `make build-all` is the offline build path that restores binary packages into
-  `installed/`, configures CMake with the vcpkg toolchain, and compiles with
-  `sccache`.
+   `installed/`, configures CMake with the vcpkg toolchain, and compiles with
+   `sccache`.
 - Keep Makefile variables `VCPKG_ROOT`, `VCPKG_DOWNLOADS`,
-  `VCPKG_DEFAULT_BINARY_CACHE`, and compiler launcher settings documented when
-  dependency handling changes.
+   `VCPKG_DEFAULT_BINARY_CACHE`, and compiler launcher settings documented when
+   dependency handling changes.
 
 ## S3 JSON manifest registry contract
 
-- Persistence uses `PARPARCHIK_REGISTRY_MANIFEST_KEY`, default `.parparchik/files.json`.
-- The same manifest key is stored in public and private buckets.
-- Startup reads both manifests into memory; if both are absent, it scans both
-  buckets, writes manifests, and then marks readiness healthy.
-- Manifest output shape is `{version, bucket_type, files}` where `files` stores
-  `key`, `bucket`, `bucket_type`, `route`, `size`, and `last_modified`.
-- Public wins for duplicate keys in manifests or in real buckets (default behavior).
-- `POST /relocate` reverses this: private wins when a file exists in both buckets.
-  It moves the registry entry between manifests and persists both.
-- On miss or stale route, the service checks public first and private second,
-  serves the resolved object, updates memory, refreshes metrics, and persists
-  both manifests.
+- Persistence uses configurable manifest keys per bucket (default `.parparchik/files.json`).
+- Each bucket stores its own manifest with the configured key.
+- Startup reads manifests from all buckets into memory; if any are absent, it scans buckets, writes manifests, and then marks readiness healthy.
+- Manifest output shape is `{version, bucket, files}` where `files` stores `key`, `bucket`, `route`, `size`, and `last_modified`.
+- Bucket priority determines which bucket wins for duplicate keys (first in config list has highest priority).
+- `POST /relocate` reverses this: last bucket wins when a file exists in multiple buckets. It moves the registry entry between manifests and persists all.
+- On miss or stale route, the service checks buckets in priority order, serves the resolved object, updates memory, refreshes metrics, and persists all manifests.
 
 ## Kubernetes probe contract
 
@@ -79,8 +76,9 @@ make docs-site
 Keep these metric names stable unless documentation and dashboards are updated
 at the same time:
 
-- `parparchik_volume_files{volume="public"}`
-- `parparchik_volume_files{volume="private"}`
+- `parparchik_volume_files{volume="<bucket>"}` — current file count for each configured bucket.
+- `parparchik_duplicate_files` — file keys present in more than one S3 bucket.
+  Alert rule `ParparchikDuplicateFiles` fires when this gauge stays above 0 for 5 minutes.
 - `parparchik_uploads_per_week`
 - `parparchik_uploads_per_month`
 
@@ -91,12 +89,11 @@ at the same time:
 | GET | `/status` | Service health, bucket names, file count |
 | GET | `/redines`, `/readiness` | Readiness probe (503 until startup completes) |
 | GET | `/helthcheck`, `/healthcheck` | Liveness probe |
-| GET | `/list` | All registered files with bucket type and route |
-| GET | `/update?filename=<key>` | Locate file, repair manifests on miss (public wins) |
-| POST | `/relocate?filename=<key>` | Verify file, relocate between buckets (private wins on duplicate) |
+| GET | `/list` | All registered files with bucket and route |
+| GET | `/update?filename=<key>` | Locate file, repair manifests on miss (priority order) |
+| POST | `/relocate?filename=<key>` | Verify file, relocate between buckets |
 | GET | `/metrics` | Prometheus metrics |
-| GET | `/public/<key>` | 302 redirect to public S3 URL |
-| GET | `/private/<key>` | 302 redirect to presigned S3 URL |
+| GET | `/<bucket>/<key>` | 302 redirect to S3 URL (public or presigned) |
 
 ## Documentation coverage contract
 
@@ -105,7 +102,7 @@ When behavior changes, update all affected documentation surfaces:
 - `README.md` for quick start, public features, config, bucket setup guide, and Makefile command list.
 - `docs/index.md` for architecture, API, runtime flow, and feature overview.
 - `docs/operations.md` for build, run, config, bucket setup guide, S3 manifests,
-  Kubernetes, Argo CD, and tests.
+   Kubernetes, Argo CD, and tests.
 - `docs/monitoring.md` for Prometheus, Alertmanager, Grafana, and metric test evidence.
 - `docs/` by running `make docs-site` after source docs change.
 

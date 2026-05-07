@@ -15,12 +15,12 @@ nlohmann::json FileEntry::ToJson() const {
   };
 }
 
-FileRegistry::FileRegistry(std::vector<std::string> buckets)
+FileRegistry::FileRegistry(std::vector<BucketConfig> buckets)
     : buckets_(std::move(buckets)) {}
 
 int FileRegistry::BucketPriority(const std::string& bucket) const {
   for (int i = 0; i < static_cast<int>(buckets_.size()); ++i) {
-    if (buckets_[i] == bucket) {
+    if (buckets_[i].name == bucket) {
       return i;
     }
   }

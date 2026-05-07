@@ -9,6 +9,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include "parparchik/config.h"
+
 namespace parparchik {
 
 struct FileEntry {
@@ -23,7 +25,7 @@ struct FileEntry {
 
 class FileRegistry {
  public:
-  explicit FileRegistry(std::vector<std::string> buckets);
+  explicit FileRegistry(std::vector<BucketConfig> buckets);
 
   void LoadManifests(
       const std::vector<std::pair<std::string, std::string>>& manifests);
@@ -45,7 +47,7 @@ class FileRegistry {
 
   void Clear();
 
-  const std::vector<std::string>& buckets() const { return buckets_; }
+  const std::vector<BucketConfig>& buckets() const { return buckets_; }
 
  private:
   int BucketPriority(const std::string& bucket) const;
@@ -56,7 +58,7 @@ class FileRegistry {
 
   mutable std::mutex mu_;
   std::unordered_map<std::string, FileEntry> entries_;
-  std::vector<std::string> buckets_;
+  std::vector<BucketConfig> buckets_;
 };
 
 }  // namespace parparchik

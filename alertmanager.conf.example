@@ -9,9 +9,18 @@ route:
   group_wait: 30s
   group_interval: 5m
   repeat_interval: 4h
+  routes:
+    - match:
+        alertname: ParparchikDuplicateFiles
+      receiver: parparchik-duplicates
+      repeat_interval: 12h
 
 receivers:
   - name: default
+    webhook_configs:
+      - url: http://localhost:5001/alerts
+        send_resolved: true
+  - name: parparchik-duplicates
     webhook_configs:
       - url: http://localhost:5001/alerts
         send_resolved: true

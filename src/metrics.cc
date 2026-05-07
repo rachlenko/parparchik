@@ -56,6 +56,14 @@ Metrics::Metrics()
               .Name("parparchik_volume_files")
               .Help("Current number of known files by bucket.")
               .Register(*registry_)),
+      duplicate_files_(
+          prometheus::BuildGauge()
+              .Name("parparchik_duplicate_files")
+              .Help(
+                  "Number of file keys that exist in more than one S3 "
+                  "bucket.")
+              .Register(*registry_)
+              .Add({})),
       uploads_per_week_(
           prometheus::BuildGauge()
               .Name("parparchik_uploads_per_week")
@@ -105,6 +113,8 @@ void Metrics::ObserveFiles(const std::vector<FileEntry>& entries) {
   uploads_per_week_.Set(week);
   uploads_per_month_.Set(month);
 }
+
+void Metrics::SetDuplicateFiles(int count) { duplicate_files_.Set(count); }
 
 std::string Metrics::Render() const {
   std::ostringstream output;
