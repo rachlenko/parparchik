@@ -20,7 +20,7 @@ or private access, serving redirects to S3 URLs.
 - Startup backfill from S3 when manifests do not exist yet.
 - Bucket priority precedence when the same key exists in multiple buckets.
 - Runtime repair when manifests are stale or disagree with real bucket contents.
-- `/status`, `/redines`, `/readiness`, `/helthcheck`, and `/healthcheck` probes.
+- `/status`, `/redines`, `/readiness`, and `/healthcheck` probes.
 - Prometheus metrics for file counts per bucket, duplicate detection, and recent uploads.
 - Prometheus alert rule for duplicate files across S3 buckets.
 - Prometheus, Alertmanager, Grafana, Docker Compose, and Argo CD examples.
@@ -163,7 +163,7 @@ sequenceDiagram
 | `/<bucket>/<key>` | Redirect to S3 URL — C++ edition. |
 | `/public/<key>`, `/private/<key>` | Redirect to S3 URL — Nginx + Lua edition. |
 | `/redines`, `/readiness` | Readiness probe. |
-| `/helthcheck`, `/healthcheck` | Liveness probe. |
+| `/healthcheck` | Liveness probe. |
 
 ## Monitoring
 

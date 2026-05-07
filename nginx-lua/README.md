@@ -141,7 +141,7 @@ MinIO console: http://localhost:9001 (user: `minioadmin`, password: `minioadmin`
 |--------|-----------------------------|------------------------------------------------------|
 | GET    | `/status`                   | Service health, bucket names, file count             |
 | GET    | `/redines`, `/readiness`    | Kubernetes readiness probe                           |
-| GET    | `/helthcheck`, `/healthcheck` | Kubernetes liveness probe                          |
+| GET    | `/healthcheck` | Kubernetes liveness probe                          |
 | GET    | `/list`                     | All registered files with bucket type and route      |
 | GET    | `/update?filename=<name>`   | Sync and return current location of a file           |
 | POST   | `/relocate?filename=<name>` | Verify file, relocate between buckets                |

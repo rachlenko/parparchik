@@ -108,7 +108,7 @@ spec:
             failureThreshold: 6
           livenessProbe:
             httpGet:
-              path: /helthcheck
+              path: /healthcheck
               port: http
             initialDelaySeconds: 15
             periodSeconds: 10

@@ -414,7 +414,7 @@ Use `argocd_deployment.conf.example` as a starter. It contains an Argo CD
 Prometheus annotations, and probes:
 
 - readiness: `/redines` (alias `/readiness`)
-- liveness: `/helthcheck` (alias `/healthcheck`)
+- liveness: `/healthcheck`
 
 Production clusters should prefer IAM roles for service accounts or Pod Identity
 instead of static access keys.

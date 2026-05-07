@@ -124,7 +124,7 @@ make down
 
 ## Kubernetes probe contract
 
-- `/helthcheck` is the requested liveness endpoint; `/healthcheck` is an alias.
+- `/healthcheck` is the requested liveness endpoint.
 - `/redines` is the requested readiness endpoint; `/readiness` is an alias.
 - Readiness returns HTTP 503 until startup load/backfill/reconcile completes.
 
@@ -145,7 +145,7 @@ at the same time:
 | --- | --- | --- |
 | GET | `/status` | Service health, bucket names, file count |
 | GET | `/redines`, `/readiness` | Readiness probe (503 until startup completes) |
-| GET | `/helthcheck`, `/healthcheck` | Liveness probe |
+| GET | `/healthcheck` | Liveness probe |
 | GET | `/list` | All registered files with bucket and route |
 | GET | `/update?filename=<key>` | Locate file, repair manifests on miss (priority order) |
 | POST | `/relocate?filename=<key>` | Verify file, relocate between buckets |

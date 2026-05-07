@@ -720,7 +720,7 @@ or private access, serving redirects to S3 URLs.</p>
 <li>Startup backfill from S3 when manifests do not exist yet.</li>
 <li>Bucket priority precedence when the same key exists in multiple buckets.</li>
 <li>Runtime repair when manifests are stale or disagree with real bucket contents.</li>
-<li><code>/status</code>, <code>/redines</code>, <code>/readiness</code>, <code>/helthcheck</code>, and <code>/healthcheck</code> probes.</li>
+<li><code>/status</code>, <code>/redines</code>, <code>/readiness</code>, and <code>/healthcheck</code> probes.</li>
 <li>Prometheus metrics for file counts per bucket, duplicate detection, and recent uploads.</li>
 <li>Prometheus alert rule for duplicate files across S3 buckets.</li>
 <li>Prometheus, Alertmanager, Grafana, Docker Compose, and Argo CD examples.</li>
@@ -924,7 +924,7 @@ sequenceDiagram
 <td>Readiness probe.</td>
 </tr>
 <tr>
-<td><code>/helthcheck</code>, <code>/healthcheck</code></td>
+<td><code>/healthcheck</code></td>
 <td>Liveness probe.</td>
 </tr>
 </tbody>

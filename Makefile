@@ -132,7 +132,7 @@ test-all: docker-up ## Start containers and run e2e tests
 test-mock-metrics: docker-up ## Run mock S3 manifest/Prometheus metrics scenario
 	@echo "Waiting for services..."
 	@for i in $$(seq 1 60); do \
-		curl -sf http://localhost:8080/helthcheck >/dev/null 2>&1 && break; \
+		curl -sf http://localhost:8080/healthcheck >/dev/null 2>&1 && break; \
 		sleep 1; \
 	done
 	MC=$(MC) ./test/mock_s3_manifest_metrics_test.sh

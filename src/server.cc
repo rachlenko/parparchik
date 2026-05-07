@@ -44,11 +44,6 @@ void Server::RegisterRoutes() {
               HandleReadiness(req, res);
             });
 
-  http_.Get("/helthcheck",
-            [this](const httplib::Request& req, httplib::Response& res) {
-              HandleHealthcheck(req, res);
-            });
-
   http_.Get("/healthcheck",
             [this](const httplib::Request& req, httplib::Response& res) {
               HandleHealthcheck(req, res);

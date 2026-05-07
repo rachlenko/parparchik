@@ -63,7 +63,7 @@ MinIO console is at http://localhost:9001 (user: `minioadmin`, password: `minioa
 |--------|----------------------------|----------------------------------------------------|
 | GET    | `/status`                  | Service health, bucket names, file count           |
 | GET    | `/redines`                 | Kubernetes readiness probe                         |
-| GET    | `/helthcheck`              | Kubernetes liveness probe                          |
+| GET    | `/healthcheck`             | Kubernetes liveness probe                          |
 | GET    | `/list`                    | All registered files with bucket type and route    |
 | GET    | `/update?filename=<name>`  | Sync and return current location of a file         |
 | POST   | `/relocate?filename=<name>`| Verify file, relocate between buckets, return ok/fail |
@@ -74,7 +74,7 @@ MinIO console is at http://localhost:9001 (user: `minioadmin`, password: `minioa
 
 Use `argocd_deployment.conf.example` as a GitOps deployment starter. It includes
 an Argo CD `Application`, Kubernetes workload resources, Prometheus scrape
-annotations, and probes wired to `/redines` and `/helthcheck`.
+annotations, and probes wired to `/redines` and `/healthcheck`.
 
 ## Prometheus metrics
 
@@ -411,8 +411,7 @@ Conflict rules:
 
 ### Kubernetes probes
 
-- `/helthcheck` returns HTTP 200 when the process is alive. `/healthcheck` is
-   available as a spelling-safe alias.
+- `/healthcheck` returns HTTP 200 when the process is alive.
 - `/redines` returns HTTP 200 only after S3 JSON manifest load and initial S3 sync have
    completed. Before that it returns HTTP 503. `/readiness` is available as a
    spelling-safe alias.

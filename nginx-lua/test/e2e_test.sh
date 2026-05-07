@@ -212,7 +212,7 @@ assert_contains "metrics has duplicate_files" "parparchik_duplicate_files" "$met
 # ─────────────────────────────────────────────
 echo -e "\n${YELLOW}--- Step 11: Health/readiness probes ---${NC}"
 
-assert_http_status "GET /helthcheck returns 200" "200" "${APP_URL}/helthcheck"
+assert_http_status "GET /healthcheck returns 200" "200" "${APP_URL}/healthcheck"
 assert_http_status "GET /healthcheck returns 200" "200" "${APP_URL}/healthcheck"
 assert_http_status "GET /redines returns 200" "200" "${APP_URL}/redines"
 assert_http_status "GET /readiness returns 200" "200" "${APP_URL}/readiness"
