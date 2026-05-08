@@ -727,7 +727,7 @@ or private access, serving redirects to S3 URLs.</p>
 <li>Two implementations: C++ (production) and Nginx + Lua (alternative).</li>
 </ul>
 <h2 id="high-level-architecture">High-level architecture<a class="headerlink" href="#high-level-architecture" title="Permanent link">&para;</a></h2>
-<pre class="mermaid"><code>flowchart TD
+<div class="mermaid">flowchart TD
     client(["Client&lt;br/&gt;(curl / app)"])
 
     subgraph Service["parparchik HTTP service"]
@@ -760,7 +760,7 @@ or private access, serving redirects to S3 URLs.</p>
     s3client -- "Reads/Writes" --&gt; bucket2
     s3client -- "Reads/Writes" --&gt; bucketN
 
-    router -- "302 redirect" --&gt; client</code></pre>
+    router -- "302 redirect" --&gt; client</div>
 <h2 id="implementation-comparison">Implementation comparison<a class="headerlink" href="#implementation-comparison" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -814,7 +814,7 @@ or private access, serving redirects to S3 URLs.</p>
 </tbody>
 </table>
 <h2 id="request-routing-flow">Request routing flow<a class="headerlink" href="#request-routing-flow" title="Permanent link">&para;</a></h2>
-<pre class="mermaid"><code>flowchart TD
+<div class="mermaid">flowchart TD
   req["Incoming request&lt;br/&gt;GET /prefix/key"] --&gt; lookup{"Route exists&lt;br/&gt;in registry?"}
   lookup --&gt;|Yes| verify{"Object exists&lt;br/&gt;in S3 bucket?"}
   verify --&gt;|Yes| redirect["302 Redirect&lt;br/&gt;to S3 URL"]
@@ -830,9 +830,9 @@ or private access, serving redirects to S3 URLs.</p>
 
   redirect --&gt; type{"Bucket type?"}
   type --&gt;|Public| pub["Public URL&lt;br/&gt;direct link"]
-  type --&gt;|Private| pre["Presigned URL&lt;br/&gt;SigV4 query-string"]</code></pre>
+  type --&gt;|Private| pre["Presigned URL&lt;br/&gt;SigV4 query-string"]</div>
 <h2 id="startup-lifecycle">Startup lifecycle<a class="headerlink" href="#startup-lifecycle" title="Permanent link">&para;</a></h2>
-<pre class="mermaid"><code>sequenceDiagram
+<div class="mermaid">sequenceDiagram
   participant S as S3 / MinIO
   participant P as parparchik
   participant R as File Registry
@@ -852,7 +852,7 @@ or private access, serving redirects to S3 URLs.</p>
   P-&gt;&gt;S: HEAD each registered file
   Note over P: Reconcile stale entries
   P-&gt;&gt;S: PUT updated manifests
-  Note over P,R: ready = true</code></pre>
+  Note over P,R: ready = true</div>
 <h2 id="runtime-flow">Runtime flow<a class="headerlink" href="#runtime-flow" title="Permanent link">&para;</a></h2>
 <ol>
 <li>Startup reads manifests from all configured buckets using their respective keys.</li>

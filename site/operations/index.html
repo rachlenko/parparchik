@@ -1200,7 +1200,7 @@ object to public and verifies public wins while private returns to zero entries.
 <hr />
 <h2 id="nginx-lua-implementation">Nginx + Lua implementation<a class="headerlink" href="#nginx-lua-implementation" title="Permanent link">&para;</a></h2>
 <h3 id="architecture-overview">Architecture overview<a class="headerlink" href="#architecture-overview" title="Permanent link">&para;</a></h3>
-<pre class="mermaid"><code>flowchart TD
+<div class="mermaid">flowchart TD
     subgraph Docker["Docker"]
         client(["Client"])
         openresty["OpenResty :8080&lt;br/&gt;(Nginx / Web Server)"]
@@ -1227,7 +1227,7 @@ object to public and verifies public wins while private returns to zero entries.
         s3 -. "Uses" .-&gt; aws_sig
         handlers -. "Uses" .-&gt; metrics_mod
         handlers -. "Uses" .-&gt; config
-    end</code></pre>
+    end</div>
 <h3 id="build-and-run">Build and run<a class="headerlink" href="#build-and-run" title="Permanent link">&para;</a></h3>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nb">cd</span><span class="w"> </span>nginx-lua
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>make<span class="w"> </span>up<span class="w">          </span><span class="c1"># Start MinIO + OpenResty containers</span>

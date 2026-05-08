@@ -644,7 +644,7 @@
 <p>Alternative implementation of parparchik using <strong>OpenResty</strong> (Nginx with LuaJIT).
 Drop-in replacement with the same REST API, environment variables, and MinIO stack.</p>
 <h2 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h2>
-<pre class="mermaid"><code>flowchart TD
+<div class="mermaid">flowchart TD
     subgraph Docker["Docker Container :8080"]
         client(["Client&lt;br/&gt;(curl / browser)"])
         openresty["OpenResty :8080&lt;br/&gt;(Nginx + LuaJIT)"]
@@ -671,9 +671,9 @@ Drop-in replacement with the same REST API, environment variables, and MinIO sta
         s3_client -. "Uses" .-&gt; aws_sig
         handlers -. "Uses" .-&gt; metrics_mod
         handlers -. "Uses" .-&gt; config_mod
-    end</code></pre>
+    end</div>
 <h2 id="request-lifecycle">Request lifecycle<a class="headerlink" href="#request-lifecycle" title="Permanent link">&para;</a></h2>
-<pre class="mermaid"><code>sequenceDiagram
+<div class="mermaid">sequenceDiagram
   participant C as Client
   participant N as Nginx
   participant H as handlers.lua
@@ -702,9 +702,9 @@ Drop-in replacement with the same REST API, environment variables, and MinIO sta
     else Not found anywhere
       H--&gt;&gt;C: 404 Not Found
     end
-  end</code></pre>
+  end</div>
 <h2 id="startup-sequence">Startup sequence<a class="headerlink" href="#startup-sequence" title="Permanent link">&para;</a></h2>
-<pre class="mermaid"><code>sequenceDiagram
+<div class="mermaid">sequenceDiagram
   participant W as Worker 0
   participant D as ngx.shared.DICT
   participant S as MinIO / S3
@@ -729,9 +729,9 @@ Drop-in replacement with the same REST API, environment variables, and MinIO sta
 
   W-&gt;&gt;S: PUT updated manifests
   W-&gt;&gt;D: set __ready__ = 1
-  Note over W,D: Service ready</code></pre>
+  Note over W,D: Service ready</div>
 <h2 id="file-routing-decision-tree">File routing decision tree<a class="headerlink" href="#file-routing-decision-tree" title="Permanent link">&para;</a></h2>
-<pre class="mermaid"><code>flowchart TD
+<div class="mermaid">flowchart TD
   A["GET /prefix/key"] --&gt; B{"lookup_by_route"}
   B --&gt;|Hit| C{"object_exists in bucket?"}
   C --&gt;|Yes| D["Return entry"]
@@ -748,7 +748,7 @@ Drop-in replacement with the same REST API, environment variables, and MinIO sta
 
   D --&gt; L{"bucket_type?"}
   L --&gt;|public| M["302 public URL"]
-  L --&gt;|private| N["302 presigned URL"]</code></pre>
+  L --&gt;|private| N["302 presigned URL"]</div>
 <h2 id="module-reference">Module reference<a class="headerlink" href="#module-reference" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
