@@ -4,6 +4,9 @@ icon: lucide/server
 
 # Nginx + Lua Implementation
 
+![[parparchik_lua_hld.png]]
+
+
 Alternative implementation of parparchik using **OpenResty** (Nginx with LuaJIT).
 Drop-in replacement with the same REST API, environment variables, and MinIO stack.
 
