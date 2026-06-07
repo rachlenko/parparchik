@@ -1,5 +1,7 @@
 # Build
 build/
+build-llvm/
+build-llvm-libcxx/
 out/
 cmake-build-*/
 

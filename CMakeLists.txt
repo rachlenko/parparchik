@@ -1,13 +1,15 @@
 cmake_minimum_required(VERSION 3.25)
 project(parparchik VERSION 0.1.0 LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# macOS: ensure C++ stdlib headers are found (CommandLineTools on macOS 26+)
-if(APPLE)
+# macOS + Apple Clang only: CommandLineTools on macOS 26+ hides libc++ headers.
+# Do NOT apply this to Homebrew LLVM / GCC — they ship their own libc++ and
+# force-injecting Apple's headers here would mix incompatible standard libraries.
+if(APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
     execute_process(
         COMMAND xcrun --show-sdk-path
         OUTPUT_VARIABLE _SDK_PATH
