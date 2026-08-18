@@ -73,22 +73,27 @@ func NewS3Store(ctx context.Context, cfg *config.Config) (*S3Store, error) {
 	// to storage directly. In the common docker-compose shape,
 	// S3_ENDPOINT=minio:9000 (only resolvable inside the Docker network)
 	// while S3_EXTERNAL_ENDPOINT=localhost:9000 (what a client outside the
-	// network must use); reusing the internal client to presign would
-	// produce a URL an external client can't even resolve. When no custom
-	// endpoint is configured at all (real AWS S3), presigning against the
-	// default client is correct as-is — there's nothing to redirect away
-	// from.
-	presignClient := client
-	if cfg.S3Endpoint != "" {
-		presignClient = s3.NewFromConfig(awsCfg, func(o *s3.Options) {
+	// network must use); reusing the internal client's endpoint to presign
+	// would produce a URL an external client can't even resolve. When no
+	// custom endpoint is configured at all (real AWS S3), presigning
+	// against the default endpoint is correct as-is — there's nothing to
+	// redirect away from.
+	//
+	// WithPresignClientFromClientOptions overrides just the endpoint for
+	// presign operations while still sharing client's credentials,
+	// retryer, and HTTP transport — presigning computes a URL locally and
+	// never makes a network call, so this doesn't construct a second live
+	// client, just a second Options value.
+	presign := s3.NewPresignClient(client, s3.WithPresignClientFromClientOptions(func(o *s3.Options) {
+		if cfg.S3Endpoint != "" {
 			o.BaseEndpoint = aws.String(externalURL)
 			o.UsePathStyle = true
-		})
-	}
+		}
+	}))
 
 	return &S3Store{
 		client:           client,
-		presign:          s3.NewPresignClient(presignClient),
+		presign:          presign,
 		region:           cfg.AWSRegion,
 		externalEndpoint: externalURL,
 	}, nil

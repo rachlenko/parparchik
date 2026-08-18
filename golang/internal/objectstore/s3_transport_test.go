@@ -14,6 +14,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+
 	"github.com/rachlenko/parparchik/golang/internal/config"
 )
 
@@ -29,6 +33,31 @@ func newTestStoreAgainst(t *testing.T, srv *httptest.Server) *S3Store {
 		t.Fatalf("NewS3Store() error = %v", err)
 	}
 	return store
+}
+
+// newNoRetryTestStoreAgainst builds a store like newTestStoreAgainst, but
+// with retries disabled — for tests that deliberately provoke a persistent
+// error, where the SDK's default retryer would otherwise spend several
+// real seconds backing off and retrying against a server that will never
+// succeed. NewS3Store itself has no retry-config knob (production code has
+// no reason to want one), so this constructs the client directly; same
+// package, so it can reach S3Store's unexported fields.
+func newNoRetryTestStoreAgainst(t *testing.T, srv *httptest.Server) *S3Store {
+	t.Helper()
+	ctx := context.Background()
+	awsCfg, err := awsconfig.LoadDefaultConfig(ctx,
+		awsconfig.WithRegion("us-east-1"),
+		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("test-access-key", "test-secret-key", "")),
+	)
+	if err != nil {
+		t.Fatalf("LoadDefaultConfig() error = %v", err)
+	}
+	client := s3.NewFromConfig(awsCfg, func(o *s3.Options) {
+		o.BaseEndpoint = &srv.URL
+		o.UsePathStyle = true
+		o.RetryMaxAttempts = 1
+	})
+	return &S3Store{client: client, presign: s3.NewPresignClient(client), region: "us-east-1"}
 }
 
 func TestS3Store_HeadObject_Found(t *testing.T) {
@@ -86,7 +115,7 @@ func TestS3Store_HeadObject_TransportFailureIsAnError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	store := newTestStoreAgainst(t, srv)
+	store := newNoRetryTestStoreAgainst(t, srv)
 
 	// Act
 	obj, err := store.HeadObject(context.Background(), "my-bucket", "my-key")
@@ -344,7 +373,7 @@ func TestS3Store_ListObjects_TransportError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	store := newTestStoreAgainst(t, srv)
+	store := newNoRetryTestStoreAgainst(t, srv)
 
 	// Act
 	_, err := store.ListObjects(context.Background(), "my-bucket")
