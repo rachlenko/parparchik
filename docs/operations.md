@@ -8,129 +8,41 @@ icon: lucide/settings
 
 - Docker for the local MinIO stack.
 - MinIO client `mc` for e2e and mock tests.
-- CMake 3.25+ and a C++20 compiler for native builds (C++ edition only).
-- `../vcpkgproxy` sibling repository for cached dependencies (C++ edition only).
+- Go 1.25+ for native builds of the Go implementation (`golang/`).
 
-## C++ implementation
+## Go implementation
 
 ### Build
 
 ```bash
-make sync          # online: fill vcpkgproxy downloads and binary cache
-make build-all     # offline path: vcpkg setup, CMake configure, compile
+make go-build
+# or directly:
+cd golang && go build ./...
 ```
 
-The binary is written to `build/parparchik`.
-
-### vcpkg and build cache
-
-Dependencies are declared in `vcpkg.json`. The project uses AWS SDK C++ with the
-S3 feature only, plus `cpp-httplib`, `nlohmann-json`, and `prometheus-cpp`.
-
-`../vcpkgproxy` acts as a caching proxy:
-
-- `downloads/` stores source archives.
-- `binary-cache/` stores built vcpkg packages.
-- `installed/` stores restored headers and libraries.
-- `bin/sccache` and CMake compiler launcher settings cache compiler outputs.
-
-Use `make sync` when dependencies or baselines change. Use `make build-all` for
-normal repeatable builds; it restores from cache and avoids unnecessary network
-work.
+The binary is written to `golang/parparchik` (gitignored; rebuild as needed).
 
 ### Run locally with Docker
 
 ```bash
-make run-docker
+make go-run-docker
 curl http://localhost:8080/status
 ```
 
-Docker Compose starts MinIO, creates `public-bucket` and `private-bucket`, and
-runs parparchik with `PARPARCHIK_REGISTRY_MANIFEST_KEY=.parparchik/files.json`.
-
-### Native run
-
-```bash
-cp .env.example .env
-make configure
-make build
-make run-native
-```
-
-Edit `.env` with bucket names, S3 endpoint, and credentials.
+`golang/docker-compose.yml` starts MinIO, creates `public-bucket` and
+`private-bucket`, and runs parparchik with
+`PARPARCHIK_REGISTRY_MANIFEST_KEY=.parparchik/files.json`.
 
 ### Tests
 
 ```bash
-make test-all
-make test-mock-metrics
+make go-test          # go vet + gofmt -l + go test -race -cover ./...
+make go-test-e2e       # start the Docker stack and run test/e2e_test.sh against it
 ```
 
-`make test-mock-metrics` creates `1mb_v0.0.1_file.tgz`, uploads it to the
-private bucket, prints `/metrics`, prints both JSON manifests, then moves the
-object to public and verifies public wins while private returns to zero entries.
-
----
-
-## Nginx + Lua implementation
-
-### Architecture overview
-
-```mermaid
-flowchart TD
-    subgraph Docker["Docker"]
-        client(["Client"])
-        openresty["OpenResty :8080<br/>(Nginx / Web Server)"]
-        minio[/"MinIO :9000<br/>(S3 Storage)"/]
-        
-        client -- "Requests" --> openresty
-        openresty -- "SigV4" --> minio
-        openresty -- "302 Redirect" --> client
-    end
-
-    subgraph Modules["Modules"]
-        direction TB
-        nginx["nginx.conf<br/>(Config)"]
-        handlers["handlers.lua<br/>(Lua)"]
-        registry[("registry.lua<br/>(Lua)")]
-        s3["s3.lua<br/>(Lua)"]
-        aws_sig["aws_sig.lua<br/>(Lua)"]
-        metrics_mod["metrics.lua<br/>(Lua)"]
-        config["config.lua<br/>(Lua)"]
-        
-        nginx -. "Uses" .-> handlers
-        handlers -. "Uses" .-> registry
-        handlers -. "Uses" .-> s3
-        s3 -. "Uses" .-> aws_sig
-        handlers -. "Uses" .-> metrics_mod
-        handlers -. "Uses" .-> config
-    end
-```
-
-### Build and run
-
-```bash
-cd nginx-lua
-make up          # Start MinIO + OpenResty containers
-make test        # Run e2e tests (24 assertions)
-make test-all    # Combined: start + test
-make down        # Stop and remove containers
-```
-
-No compilation required — Lua scripts are copied directly into the container.
-
-### Module responsibilities
-
-| Module | Dependencies | Purpose |
-|--------|-------------|---------|
-| `config.lua` | none | Parse `PARPARCHIK_*`, `S3_*`, `AWS_*` env vars |
-| `aws_sig.lua` | OpenSSL FFI | HMAC-SHA256, SigV4 request signing, presigned URLs |
-| `s3.lua` | resty.http, aws_sig | ListObjects, HeadObject, GetObject, PutObject |
-| `registry.lua` | ngx.shared.DICT | File to route mapping, manifest load/persist |
-| `metrics.lua` | none | Prometheus text-format gauge rendering |
-| `handlers.lua` | all above | Init, sync, resolve, HTTP handlers |
-
-See [Nginx + Lua](nginx-lua.md) for full module diagrams and routing logic.
+See [`golang/README.md`](https://github.com/rachlenko/parparchik/blob/main/golang/README.md) for the full package layout,
+configuration reference, and the guide for adding new repository formats
+(Maven, npm, PyPI, Docker, Helm, NuGet, Debian, RPM, Terraform, ML models).
 
 ---
 
@@ -201,9 +113,7 @@ See [Nginx + Lua](nginx-lua.md) for full module diagrams and routing logic.
 1. Start MinIO and parparchik with Docker Compose:
 
     ```bash
-    make run-docker     # C++ edition
-    # or
-    cd nginx-lua && make up   # Nginx + Lua edition
+    make go-run-docker
     ```
 
     This creates `public-bucket` (public read) and `private-bucket` (private)
@@ -251,8 +161,8 @@ See [Nginx + Lua](nginx-lua.md) for full module diagrams and routing logic.
 
 ## Multi-bucket configuration
 
-Both implementations (C++ and Nginx + Lua) support **any number of S3 buckets**.
-Use the `PARPARCHIK_BUCKETS` environment variable to define them.
+The Go implementation supports **any number of S3 buckets**. Use the
+`PARPARCHIK_BUCKETS` environment variable to define them.
 
 ### `PARPARCHIK_BUCKETS` format
 
@@ -289,34 +199,13 @@ This configures:
 export PARPARCHIK_BUCKETS="cdn-images:manifests/images.json:public,cdn-videos:manifests/videos.json:public,user-uploads:manifests/uploads.json,reports:manifests/reports.json,audit-logs:manifests/audit.json"
 ```
 
-### C++ implementation — Docker Compose
-
-```yaml
-services:
-  parparchik:
-    build: .
-    ports:
-      - "8080:8080"
-    environment:
-      PARPARCHIK_BUCKETS: "assets:public,docs-internal,backups"
-      S3_ENDPOINT: minio:9000
-      AWS_REGION: us-east-1
-      AWS_ACCESS_KEY_ID: minioadmin
-      AWS_SECRET_ACCESS_KEY: minioadmin
-```
-
-!!! note
-    When the manifest key is omitted (e.g. `assets:public`), it defaults to
-    `.parparchik/files.json`. When the access field is omitted (e.g. `docs-internal`),
-    the bucket is **private**.
-
-### Nginx + Lua implementation — Docker Compose
+### Go implementation — Docker Compose
 
 ```yaml
 services:
   parparchik:
     build:
-      context: ./nginx-lua
+      context: ./golang
     ports:
       - "8080:8080"
     environment:
@@ -326,7 +215,14 @@ services:
       AWS_REGION: us-east-1
       AWS_ACCESS_KEY_ID: minioadmin
       AWS_SECRET_ACCESS_KEY: minioadmin
+      # See golang/README.md for PARPARCHIK_API_KEYS, rate limit, and sync
+      # interval settings not present in the older editions.
 ```
+
+!!! note
+    When the manifest key is omitted (e.g. `assets:public`), it defaults to
+    `.parparchik/files.json`. When the access field is omitted (e.g. `docs-internal`),
+    the bucket is **private**.
 
 ### Kubernetes ConfigMap
 

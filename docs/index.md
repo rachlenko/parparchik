@@ -8,10 +8,13 @@ icon: lucide/box
   <img src="assets/logo.png" alt="parparchik logo" width="200">
 </p>
 
-`parparchik` is an S3 file routing service available in two implementations:
-a **C++20** production server and an **OpenResty (Nginx + Lua)** alternative.
-Both route versioned files from multiple configurable S3 buckets with public
-or private access, serving redirects to S3 URLs.
+`parparchik` is an S3 file routing service, implemented in Go (`golang/`,
+recommended) with a Python reference server (`server.py`) kept for
+comparison. It routes versioned files from multiple configurable S3 buckets
+with public or private access, serving redirects to S3 URLs, and is built
+to grow into a general multi-format artifact repository — see
+[`docs/plans/`](plans/) for the roadmap toward Maven, npm, PyPI, Docker,
+Helm, NuGet, Debian, RPM, Terraform, and ML-model repository support.
 
 ## Features
 
@@ -24,7 +27,8 @@ or private access, serving redirects to S3 URLs.
 - Prometheus metrics for file counts per bucket, duplicate detection, and recent uploads.
 - Prometheus alert rule for duplicate files across S3 buckets.
 - Prometheus, Alertmanager, Grafana, Docker Compose, and Argo CD examples.
-- Two implementations: C++ (production) and Nginx + Lua (alternative).
+- Optional API-key authentication and per-client-IP rate limiting.
+- Extensible repository-format architecture (`internal/format.Format`).
 
 ## High-level architecture
 
@@ -33,7 +37,7 @@ flowchart TD
     client(["Client<br/>(curl / app)"])
     
     subgraph Service["parparchik HTTP service"]
-        router["Request Router<br/>(C++ / OpenResty)"]
+        router["Request Router<br/>(Go)"]
         registry[("File Registry<br/>(Memory)")]
         s3client["S3 Client<br/>(SDK / HTTP)"]
         prom["Metrics<br/>(Prometheus)"]
@@ -65,18 +69,20 @@ flowchart TD
     router -- "302 redirect" --> client
 ```
 
-## Implementation comparison
+## Go implementation
 
-| Component | C++ | Nginx + Lua |
-|-----------|-----|-------------|
-| Runtime | cpp-httplib HTTP server | OpenResty (Nginx + LuaJIT) |
-| S3 SDK | AWS SDK for C++ | Pure Lua SigV4 via OpenSSL FFI |
-| State | `std::unordered_map` + mutex | `ngx.shared.DICT` (cross-worker) |
-| JSON | nlohmann-json | lua-cjson (bundled) |
-| Metrics | prometheus-cpp | Pure Lua text renderer |
-| Concurrency | Thread pool | Event loop + coroutines |
-| Build time | Minutes (vcpkg + CMake) | Seconds (Docker layer cache) |
-| File routes | `/<bucket-name>/<key>` | `/public/<key>`, `/private/<key>` |
+| Component | Go |
+|-----------|-----|
+| Runtime | `net/http` (Go 1.22+ `ServeMux` method+wildcard routing) |
+| S3 SDK | `aws-sdk-go-v2` |
+| State | mutex-guarded in-memory catalog (`internal/catalog`) |
+| JSON | `encoding/json` |
+| Metrics | Prometheus `client_golang` |
+| Concurrency | goroutines |
+| File routes | `/<bucket-name>/<key>`, plus `/public/<key>`/`/private/<key>` resolved by bucket type |
+
+See [`golang/README.md`](https://github.com/rachlenko/parparchik/blob/main/golang/README.md)
+for the package layout and extension guide.
 
 ## Request routing flow
 
@@ -161,8 +167,8 @@ sequenceDiagram
 | `/update?filename=<key>` | Resolve a key and repair manifests on miss/stale state. |
 | `POST /relocate?filename=<key>` | Verify file location, relocate registry entry between buckets. |
 | `/metrics` | Prometheus metrics. |
-| `/<bucket>/<key>` | Redirect to S3 URL — C++ edition. |
-| `/public/<key>`, `/private/<key>` | Redirect to S3 URL — Nginx + Lua edition. |
+| `/<bucket>/<key>` | Redirect to S3 URL. |
+| `/public/<key>`, `/private/<key>` | Redirect to S3 URL, resolved by bucket type. |
 | `/redines`, `/readiness` | Readiness probe. |
 | `/healthcheck` | Liveness probe. |
 
@@ -180,26 +186,14 @@ full config examples.
 
 ## Common commands
 
-**C++ (production):**
-
 ```bash
-make build-all
-make run-docker
-make test-all
-make test-mock-metrics
+make go-build
+make go-test
+make go-run-docker
+make go-test-e2e
 make docs-site
 ```
 
-**Nginx + Lua (alternative):**
-
-```bash
-cd nginx-lua
-make test-all
-make status
-make down
-```
-
-See [Operations](operations.md) for build, run, test, vcpkg cache, and
-Kubernetes instructions. See [Nginx + Lua](nginx-lua.md) for the alternative
-implementation details.
+See [Operations](operations.md) for build, run, test, and Kubernetes
+instructions.
 
