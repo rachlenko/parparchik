@@ -242,13 +242,16 @@ real need for that format, not pre-built as a stub.
 - [x] `golang/Dockerfile` (multi-stage, distroless nonroot final image)
 - [x] `golang/docker-compose.yml` (MinIO + bucket bootstrap, mirroring `nginx-lua/docker-compose.yml`)
 - [x] `golang/README.md` (config table, package layout, extension guide, "why a rewrite not a port" section)
-- [ ] port `nginx-lua/test/e2e_test.sh`'s 24 assertions (or an equivalent Go-native e2e test) against `golang/docker-compose.yml`
-- [ ] run e2e suite against a live `docker compose up`
+- [x] ran the built image end-to-end against real MinIO (`docker compose build` + `docker run`, then upload/`GET /update`/download/move/`POST /relocate`/verify-old-route-404/`GET /list`/`GET /metrics` via curl and the `minio/mc` image) — the first time this implementation was actually executed rather than only tested against fakes
+- ⚠️ Found and fixed via this live run: `S3Store.PresignedURL` used the internal `S3_ENDPOINT`'s client to sign, so presigned URLs for private-bucket downloads pointed at `minio:9000` — unresolvable outside the Docker network — instead of `S3_EXTERNAL_ENDPOINT` (`localhost:9000`). This is exactly the shape `golang/docker-compose.yml` ships, so every private-bucket download was broken outside the container network. See the commit fixing `internal/objectstore/s3.go`. Confirmed fixed by following the corrected presigned URL to a real, byte-identical download.
+- [ ] port `nginx-lua/test/e2e_test.sh`'s 24 assertions (or an equivalent Go-native e2e test) — **blocked in this sandbox**: `/usr/bin/mc` on this host resolves to Midnight Commander, not the MinIO client, so the existing script's `$MC` calls silently no-op instead of failing loudly (worth hardening the script itself to `command -v` and version-check `$MC` before trusting it). Worked around for manual verification by driving `minio/mc` via `docker run --rm --network ... minio/mc:latest`, but the script itself still needs porting/running in an environment with a real `mc` on `PATH`, or rewritten to use the Docker-image approach directly so it isn't host-`mc`-dependent.
+- [ ] run the ported e2e suite as an automated (non-manual) check
 
 ### Task 11: Close testing gaps from Task 2
-- [ ] add S3-call-site tests for `objectstore.S3Store` against either a real MinIO test container or `aws-sdk-go-v2`'s HTTP transport mocking (`smithy-go` middleware test doubles)
-- [ ] target ≥80% coverage for `internal/objectstore` (currently ~6%, pure-helper-only)
-- [ ] run project tests - must pass before next task
+- [x] add S3-call-site tests for `objectstore.S3Store` — `internal/objectstore/s3_transport_test.go`, an `httptest.Server` standing in for S3/MinIO (not a real MinIO container): `ListObjects` (single page, pagination via continuation token, empty bucket, transport error), `HeadObject`/`GetObject` (found, not-found — HEAD's 404-with-no-body vs GET's XML `NoSuchKey` error body — and transport error), `PutObject` (content-type passthrough and default, error), plus a stateful Put→Head→Get round-trip against one fake bucket
+- [x] target ≥80% coverage for `internal/objectstore` — reached 94.3% (up from ~6% pure-helper-only, then 44.3% after the presigned-URL fix below added its own tests)
+- [x] run project tests - must pass before next task
+- ⚠️ Found and fixed via this work (not from the transport tests directly, but from manually running the built image against real MinIO while validating Task 9's deployment parity — see that task): `S3Store.PresignedURL` signed against the internal `S3_ENDPOINT` client instead of `S3_EXTERNAL_ENDPOINT`, producing presigned URLs unresolvable outside the Docker network. Fixed with a dedicated presign-only client bound to the external endpoint.
 
 ### Task 12: Verify acceptance criteria
 - [ ] verify every requirement in Overview is implemented (`go build ./...`, `go vet ./...`, `gofmt -l .` clean, `go test -race -cover ./...` passing)
