@@ -117,142 +117,31 @@ curl -I http://localhost:8080/public-bucket/photo.jpg    # 404
 curl -L http://localhost:8080/private-bucket/photo.jpg   # 302 → presigned URL → download
 ```
 
-## Building the C++ binary
+## Go implementation (recommended)
 
-### Prerequisites
-
-- CMake 3.25+
-- C++20 compiler (GCC 12+, Clang 15+, Apple Clang 15+)
-- git, curl (for initial sync only)
-
-All other dependencies (AWS SDK, httplib, nlohmann-json, prometheus-cpp,
-sccache) are managed by the `../vcpkgproxy` sibling repository.
-
-### vcpkgproxy — offline package proxy
-
-The `../vcpkgproxy` repo acts as a local mirror for all upstream dependencies.
-After a one-time sync, builds work fully offline.
-
-```ini
-vcpkgproxy/
-├── vcpkg/            git clone of github.com/microsoft/vcpkg (registry)
-├── downloads/        source tarballs (github.com/awslabs/*, mozilla/sccache, etc.)
-├── binary-cache/     pre-built vcpkg packages (*.zip)
-├── installed/        unpacked headers + libs ready for linking
-├── bin/sccache       cached binary from github.com/mozilla/sccache/releases
-├── triplets/         custom triplet overlays (e.g. macOS header fixes)
-├── ports/            custom/patched vcpkg ports
-└── scripts/
-    ├── env.sh        shared paths and versions
-    ├── sync.sh       download everything from upstream (ONLINE)
-    └── setup.sh      install from local cache (OFFLINE)
-```
-
-**Two-phase workflow:**
+`golang/` is the primary, recommended implementation — an idiomatic Go
+rewrite built on `aws-sdk-go-v2`, with the extensible
+`internal/format.Format` architecture that lets this project grow into a
+general multi-format artifact repository (Maven, npm, PyPI, Docker, Helm,
+NuGet, Debian, RPM, Terraform, ML models — see
+[`docs/plans/`](docs/plans/) for the roadmap).
 
 ```bash
-# Phase 1: Sync (requires network, run once)
-make sync
+cd golang
+go build ./...
+go test -race -cover ./...
 
-# Phase 2: Build (fully offline)
-make build-all
+# Or via the root Makefile:
+make go-build
+make go-test
+make go-run-docker   # full MinIO + parparchik stack
 ```
 
-`make sync` downloads into vcpkgproxy:
+See [`golang/README.md`](golang/README.md) for configuration, package
+layout, and the extension guide for adding new repository formats.
 
-- vcpkg registry from `github.com/microsoft/vcpkg`
-- sccache binary from `github.com/mozilla/sccache/releases`
-- All source tarballs for dependencies declared in `vcpkg.json`
-- Compiles and caches binary packages locally
-
-`make build-all` uses only local files:
-
-- Restores 23 pre-built packages from `vcpkgproxy/binary-cache/`
-- Installs headers and libs to `vcpkgproxy/installed/`
-- Configures CMake with the vcpkg toolchain
-- Builds `parparchik` with sccache
-
-In short, `vcpkgproxy` gives this project two caches:
-
-- __Download cache__: `VCPKG_DOWNLOADS=../vcpkgproxy/downloads` keeps upstream
-   source archives local, so repeated dependency installs do not fetch the
-   internet again.
-- __Binary package cache__: `VCPKG_DEFAULT_BINARY_CACHE=../vcpkgproxy/binary-cache`
-   keeps compiled vcpkg packages as archives, so clean builds can restore
-   dependencies instead of rebuilding AWS SDK, Prometheus, and other libraries.
-- **Compiler cache**: `sccache` is placed first in `PATH` and configured as the
-   C/C++ compiler launcher, so repeated project compiles reuse cached object
-   files when compiler flags and inputs match.
-
-The Makefile wires this automatically:
-
-```make
-export VCPKG_ROOT := ../vcpkgproxy/vcpkg
-export VCPKG_DOWNLOADS := ../vcpkgproxy/downloads
-export VCPKG_DEFAULT_BINARY_CACHE := ../vcpkgproxy/binary-cache
-cmake -DCMAKE_TOOLCHAIN_FILE=../vcpkgproxy/vcpkg/scripts/buildsystems/vcpkg.cmake \
-      -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
-```
-
-To set up a new machine, clone or restore `../vcpkgproxy`, run `make sync` once
-when network is available, then use `make build-all` or `make build` for cached
-offline rebuilds.
-
-### Configuring vcpkg
-
-Dependencies are declared in `vcpkg.json`:
-
-```json
-{
-  "dependencies": [
-    "cpp-httplib",
-    "nlohmann-json",
-    "prometheus-cpp",
-    {"name": "aws-sdk-cpp", "features": ["s3"]}
-  ]
-}
-```
-
-To add a dependency:
-
-1. Add it to the `dependencies` array in `vcpkg.json`.
-2. Run `make sync` to download and cache the new package.
-3. Add the corresponding `find_package()` and `target_link_libraries()` in `CMakeLists.txt`.
-
-The `builtin-baseline` field in `vcpkg.json` pins the version set. Update it with:
-
-```bash
-cd ../vcpkgproxy/vcpkg
-git log --oneline -1  # use this commit hash as the baseline
-```
-
-Custom or patched ports go in `../vcpkgproxy/ports/<port-name>/` and are
-automatically picked up as overlay ports.
-
-### Build
-
-```bash
-# Full pipeline: vcpkg setup (offline) → configure → build
-make build-all
-
-# Or step by step:
-make vcpkg-setup    # install packages from local cache
-make configure      # CMake configure (release)
-make build          # compile
-
-# Debug build
-make configure-debug
-make build
-```
-
-The binary is at `build/parparchik`.
-
-### Run natively
-
-```bash
-cp .env.example .env   # edit with your bucket names and credentials
-make run-native
-```
+A Python reference server (`server.py`) remains available for comparison
+via `make run-docker` / `make test-all`.
 
 ## Configuration
 
@@ -420,55 +309,23 @@ Conflict rules:
 
 ```ini
 parparchik/
-├── CMakeLists.txt          C++ build definition
-├── CMakePresets.json        CMake presets (vcpkg + sccache)
-├── vcpkg.json               Dependency manifest
-├── Makefile                 Build/run/test commands
-├── zensical.toml            Zensical static site configuration
+├── Makefile                 Build/run/test commands (Go + Python reference server)
+├── zensical.toml             Zensical static site configuration
 ├── argocd_deployment.conf.example Argo CD + Kubernetes deployment example
-├── docker-compose.yml       MinIO + parparchik stack
-├── Dockerfile               Production C++ image
+├── docker-compose.yml       MinIO + Python reference server stack
 ├── Dockerfile.test          Lightweight Python image for testing
 ├── server.py                Python reference server
 ├── .env.example             Environment variable template
-├── include/parparchik/
-│   ├── config.h             Configuration from env vars
-│   ├── s3_client.h          AWS S3 SDK wrapper
-│   ├── file_registry.h      Thread-safe file → route registry
-│   ├── metrics.h            Prometheus metrics
-│   └── server.h             HTTP server
-├── src/
-│   ├── main.cc              Entry point
-│   ├── config.cc
-│   ├── s3_client.cc
-│   ├── file_registry.cc
-│   ├── metrics.cc
-│   └── server.cc
-├── nginx-lua/               Nginx + Lua alternative implementation
-│   ├── lua/                 Lua application modules
-│   ├── test/                End-to-end test (24 assertions)
-│   ├── Dockerfile           OpenResty Alpine container
-│   ├── docker-compose.yml   MinIO + parparchik stack
-│   ├── nginx.conf           Route configuration
-│   └── Makefile             Build/run/test commands
-├── docs/                    Zensical source documentation and generated site
+├── golang/                  Go implementation (recommended) — see golang/README.md
+│   ├── cmd/parparchik/       Entrypoint
+│   ├── internal/             config, catalog, objectstore, format, resolver, httpapi, metricsapi
+│   ├── Dockerfile
+│   └── docker-compose.yml    MinIO + parparchik (Go) stack
+├── docs/                    Zensical source documentation, generated site, and docs/plans/ (roadmap)
 ├── procedures/              Maintenance procedures
 ├── skills/                  Project-specific workflow notes
 └── test/
     └── e2e_test.sh          End-to-end test (18 assertions)
-
-../vcpkgproxy/               Sibling repo — offline package proxy
-├── scripts/
-│   ├── env.sh                Shared paths and versions
-│   ├── sync.sh               Download everything from upstream (ONLINE)
-│   └── setup.sh              Install from local cache (OFFLINE)
-├── vcpkg/                    git clone of microsoft/vcpkg (gitignored)
-├── downloads/                Source tarballs (awslabs/*, mozilla/sccache, etc.)
-├── binary-cache/             Pre-built vcpkg packages (*.zip)
-├── installed/                Unpacked headers + libs (gitignored)
-├── bin/                      Cached binaries (sccache)
-├── triplets/                 Custom triplet overlays (e.g. macOS header fixes)
-└── ports/                    Custom/patched vcpkg ports
 ```
 
 ## Makefile targets
@@ -476,22 +333,20 @@ parparchik/
 ```md
 make help               Show all targets
 
-make sync               Download all deps into vcpkgproxy (online)
-make vcpkg-setup        Install packages from local cache (offline)
+make go-build           Build the Go binary (golang/)
+make go-test            Run the Go test suite (race + coverage)
+make go-docker-up       Start MinIO + the Go parparchik service
+make go-docker-down     Stop the Go implementation's Docker stack
+make go-docker-logs     Tail the Go implementation's container logs
+make go-run-docker      Start the Go implementation's full Docker stack
+make go-test-e2e        Start the Go stack and run e2e tests against it
 
-make configure          Configure CMake (release)
-make configure-debug    Configure CMake (debug)
-make build              Build the C++ binary
-make build-all          Full pipeline: vcpkg → configure → build
-make clean              Remove build artifacts
-
-make docker-up          Start MinIO + parparchik
+make docker-up          Start MinIO + the Python reference server
 make docker-down        Stop containers
 make docker-logs        Tail container logs
 make docker-restart     Rebuild and restart
 
-make run-native         Run binary locally
-make run-docker         Start full Docker stack
+make run-docker         Start the Python reference server's full stack
 
 make test               Run e2e tests (containers must be up)
 make test-all           Start containers + run e2e tests
@@ -506,34 +361,3 @@ make docs-site          Build static documentation into docs/
 make docs-serve         Serve docs locally at localhost:8000
 make docs-procedure     Show documentation/skills update procedure
 ```
-
-## Nginx + Lua alternative implementation
-
-The `nginx-lua/` directory contains a complete reimplementation of parparchik
-using **OpenResty** (Nginx with LuaJIT). It provides the same REST API and
-S3 routing logic using pure Lua scripts running inside Nginx.
-
-### Architecture comparison
-
-| Component | C++ (production) | Nginx + Lua (alternative) |
-|-----------|------------------|---------------------------|
-| Runtime | Custom HTTP server via cpp-httplib | OpenResty (Nginx + LuaJIT) |
-| S3 SDK | AWS SDK for C++ | Pure Lua SigV4 via OpenSSL FFI |
-| State | `std::unordered_map` + `std::mutex` | `ngx.shared.DICT` (cross-worker) |
-| JSON | nlohmann-json | lua-cjson (bundled with OpenResty) |
-| Metrics | prometheus-cpp | Pure Lua text renderer |
-| Concurrency | Thread pool | Nginx event loop + Lua coroutines |
-| Build time | Minutes (vcpkg + CMake) | Seconds (Docker layer cache) |
-| File routes | `/<bucket-name>/<key>` | `/public/<key>`, `/private/<key>` |
-
-### Quick start (Nginx + Lua)
-
-```bash
-cd nginx-lua
-make test-all    # Start stack + run 24-assertion e2e test
-make status      # Check health
-make down        # Stop
-```
-
-See [`nginx-lua/README.md`](nginx-lua/README.md) for full documentation,
-architecture diagrams, and module details.

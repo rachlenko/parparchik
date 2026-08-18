@@ -1,85 +1,65 @@
 # ──────────────────────────────────────────────────────────────
 #  parparchik — S3 file routing web service
 # ──────────────────────────────────────────────────────────────
+#
+#  The Go implementation (golang/) is the primary, recommended
+#  implementation. The `go-*` targets below delegate into it.
+#  A Python reference server (server.py) remains available via
+#  `make run-docker` / `make test-all` for comparison.
 
 SHELL          := /bin/bash
 .DEFAULT_GOAL  := help
 
-# Paths — all dependencies live in ../vcpkgproxy
-VCPKGPROXY_DIR := $(abspath ../vcpkgproxy)
-VCPKG_ROOT     := $(VCPKGPROXY_DIR)/vcpkg
-VCPKG_TOOLCHAIN:= $(VCPKG_ROOT)/scripts/buildsystems/vcpkg.cmake
-BUILD_DIR      := build
-TRIPLET_OVERLAY:= $(VCPKGPROXY_DIR)/triplets
 MC             ?= mc
 ZENSICAL       ?= uvx zensical
-
-# Point vcpkg at the local proxy for all downloads and binary caches.
-# After `make sync`, no network access is needed.
-export PATH                    := $(VCPKGPROXY_DIR)/bin:$(PATH)
-export VCPKG_ROOT              := $(VCPKG_ROOT)
-export VCPKG_DOWNLOADS         := $(VCPKGPROXY_DIR)/downloads
-export VCPKG_DEFAULT_BINARY_CACHE := $(VCPKGPROXY_DIR)/binary-cache
-
-# macOS: ensure SDK root is set so vcpkg builds find system headers
-export SDKROOT ?= $(shell xcrun --show-sdk-path 2>/dev/null)
 
 # Docker
 COMPOSE        := docker compose
 
 # ──────────────────────────────────────────────
-#  vcpkgproxy (offline proxy)
+#  Go implementation (golang/) — primary
 # ──────────────────────────────────────────────
 
-.PHONY: sync
-sync: ## Download all dependencies into vcpkgproxy (requires network)
-	$(VCPKGPROXY_DIR)/scripts/sync.sh
+.PHONY: go-build
+go-build: ## Build the Go binary (golang/)
+	cd golang && go build ./...
 
-.PHONY: vcpkg-setup
-vcpkg-setup: ## Install packages from local vcpkgproxy cache (offline)
-	$(VCPKGPROXY_DIR)/scripts/setup.sh
+.PHONY: go-test
+go-test: ## Run the Go test suite with race detection and coverage
+	cd golang && go vet ./... && gofmt -l . && go test -race -cover ./...
 
-# ──────────────────────────────────────────────
-#  C++ build (native, offline after sync)
-# ──────────────────────────────────────────────
+.PHONY: go-docker-up
+go-docker-up: ## Start MinIO + the Go parparchik service
+	cd golang && $(COMPOSE) up -d --build
 
-.PHONY: configure
-configure: ## Configure CMake with vcpkg toolchain + sccache
-	cmake -B $(BUILD_DIR) \
-		-DCMAKE_TOOLCHAIN_FILE=$(VCPKG_TOOLCHAIN) \
-		-DVCPKG_OVERLAY_TRIPLETS=$(TRIPLET_OVERLAY) \
-		-DVCPKG_INSTALLED_DIR=$(VCPKGPROXY_DIR)/installed \
-		-DCMAKE_C_COMPILER_LAUNCHER=sccache \
-		-DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
-		-DCMAKE_BUILD_TYPE=Release
+.PHONY: go-docker-down
+go-docker-down: ## Stop the Go implementation's Docker stack
+	cd golang && $(COMPOSE) down
 
-.PHONY: configure-debug
-configure-debug: ## Configure CMake in Debug mode
-	cmake -B $(BUILD_DIR) \
-		-DCMAKE_TOOLCHAIN_FILE=$(VCPKG_TOOLCHAIN) \
-		-DVCPKG_OVERLAY_TRIPLETS=$(TRIPLET_OVERLAY) \
-		-DVCPKG_INSTALLED_DIR=$(VCPKGPROXY_DIR)/installed \
-		-DCMAKE_C_COMPILER_LAUNCHER=sccache \
-		-DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
-		-DCMAKE_BUILD_TYPE=Debug
+.PHONY: go-docker-logs
+go-docker-logs: ## Tail the Go implementation's container logs
+	cd golang && $(COMPOSE) logs -f
 
-.PHONY: build
-build: ## Build the C++ binary
-	cmake --build $(BUILD_DIR) -j$$(nproc 2>/dev/null || sysctl -n hw.ncpu)
+.PHONY: go-run-docker
+go-run-docker: go-docker-up ## Start the Go implementation's full Docker stack
+	@echo "parparchik (Go) running at http://localhost:8080"
+	@echo "MinIO console at             http://localhost:9001 (minioadmin/minioadmin)"
 
-.PHONY: build-all
-build-all: vcpkg-setup configure build ## Full pipeline: vcpkg → configure → build
-
-.PHONY: clean
-clean: ## Remove build artifacts
-	rm -rf $(BUILD_DIR)
+.PHONY: go-test-e2e
+go-test-e2e: go-docker-up ## Start the Go stack and run the e2e test suite against it
+	@echo "Waiting for services..."
+	@for i in $$(seq 1 30); do \
+		curl -sf http://localhost:8080/status >/dev/null 2>&1 && break; \
+		sleep 1; \
+	done
+	MC=$(MC) ./test/e2e_test.sh
 
 # ──────────────────────────────────────────────
-#  Docker
+#  Docker (Python reference server)
 # ──────────────────────────────────────────────
 
 .PHONY: docker-up
-docker-up: ## Start MinIO + parparchik containers
+docker-up: ## Start MinIO + the Python reference server
 	$(COMPOSE) up -d --build
 
 .PHONY: docker-down
@@ -101,13 +81,8 @@ docker-restart: docker-down docker-up ## Rebuild and restart everything
 #  Run
 # ──────────────────────────────────────────────
 
-.PHONY: run-native
-run-native: ## Run the C++ binary locally (requires env vars or .env)
-	@if [ -f .env ]; then set -a && source .env && set +a; fi; \
-	$(BUILD_DIR)/parparchik
-
 .PHONY: run-docker
-run-docker: docker-up ## Start the full stack in Docker
+run-docker: docker-up ## Start the Python reference server's full stack in Docker
 	@echo "parparchik running at http://localhost:8080"
 	@echo "MinIO console at    http://localhost:9001 (minioadmin/minioadmin)"
 

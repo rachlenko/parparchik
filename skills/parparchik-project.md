@@ -5,128 +5,134 @@ monitoring configuration, or operational workflows.
 
 ## Project summary
 
-`parparchik` is an S3 file routing service available in two implementations:
-
-1. **C++20** — production server using `cpp-httplib`, AWS SDK for C++ S3,
-   `nlohmann-json`, and `prometheus-cpp` via vcpkg.
-2. **Nginx + Lua** — alternative server using OpenResty (Nginx + LuaJIT)
-   with `lua-resty-http` and pure Lua AWS SigV4 via OpenSSL FFI.
-
-Both support multiple configurable S3 buckets, each with its own manifest key,
-allowing flexible file routing with public or private access.
+`parparchik` is an S3 file routing service. The **Go implementation**
+(`golang/`) is the primary, recommended implementation, built to grow into a
+general multi-format artifact repository (Maven, npm, PyPI, Docker, Helm,
+NuGet, Debian, RPM, Terraform, ML models — see `docs/plans/` for the
+roadmap). A Python reference server (`server.py`) remains for comparison.
 
 ## Important files
 
-### C++ implementation
+### Go implementation (`golang/`)
 
-- `src/server.cc` — HTTP routes, startup manifest load, reconciliation, and miss repair.
-- `src/file_registry.cc` — S3 JSON manifest-backed in-memory file registry.
-- `src/s3_client.cc` — AWS SDK C++ S3 operations.
-- `src/metrics.cc` — Prometheus gauges and text rendering.
-- `Makefile` — canonical build, run, test, and docs commands.
-- `test/mock_s3_manifest_metrics_test.sh` — mock private/public metrics and
-   manifest verification scenario.
-
-### Nginx + Lua implementation
-
-- `nginx-lua/lua/handlers.lua` — HTTP handlers, init, sync, resolve logic.
-- `nginx-lua/lua/registry.lua` — File registry backed by `ngx.shared.DICT`.
-- `nginx-lua/lua/s3.lua` — S3 client using `resty.http` with SigV4 signing.
-- `nginx-lua/lua/aws_sig.lua` — Pure Lua AWS SigV4 via OpenSSL FFI.
-- `nginx-lua/lua/metrics.lua` — Prometheus text-format rendering.
-- `nginx-lua/lua/config.lua` — Environment variable parser.
-- `nginx-lua/nginx.conf` — OpenResty route configuration.
-- `nginx-lua/Makefile` — build, run, test commands for Lua edition.
-- `nginx-lua/test/e2e_test.sh` — 24-assertion end-to-end test.
+- `cmd/parparchik/main.go` — entrypoint: config → S3 store → catalog →
+  resolver → metrics → HTTP API wiring, graceful shutdown, background sync.
+- `internal/config` — environment variable parsing (buckets, auth, rate
+  limit, sync interval).
+- `internal/catalog` — mutex-guarded in-memory file registry. `Register`
+  applies bucket-priority conflict resolution (bulk multi-bucket sync);
+  `Set` unconditionally overwrites (confirmed single-key HEAD-check
+  results, e.g. `ResolveMissingFile`/`Relocate`) — do not use `Register` in
+  those call sites, it reintroduces a stale-entry bug that was already
+  caught and fixed once (see `internal/catalog/catalog.go` doc comments).
+- `internal/objectstore` — `Store` interface + `aws-sdk-go-v2`-backed
+  `S3Store`. Do not hand-roll AWS SigV4 signing — the Lua implementation
+  this project replaced had real signature bugs from doing that.
+- `internal/format` — `Format` interface, the extension seam for new
+  repository formats. Only `generic` (flat bucket/key routing) is
+  implemented; add new formats as their own package, not as stubs ahead of
+  need (YAGNI).
+- `internal/resolver` — route resolution, missing-file resolution, registry
+  sync/reconciliation, relocate. The core business logic.
+- `internal/httpapi` — HTTP handlers/routing (Go 1.22+ `ServeMux`
+  method+wildcard patterns), API-key auth middleware, per-IP rate limiter,
+  `validateKey` path-traversal/control-character input validation.
+- `internal/metricsapi` — Prometheus metrics via `client_golang`.
+- `Dockerfile`, `docker-compose.yml` — Go implementation's own container
+  build and local MinIO stack.
+- `README.md` — configuration reference, package layout, "why a rewrite
+  not a port" (bugs found in the retired Lua implementation and how the Go
+  version avoids them), extension guide for new formats.
 
 ### Shared
 
 - `argocd_deployment.conf.example` — Argo CD/Kubernetes deployment starter.
 - `docs/` and `zensical.toml` — Zensical source site and generated static site output.
+- `docs/plans/` — implementation plans, including the Go rewrite plan and
+  the module/format task breakdown.
 - `docs/assets/logo.png` — project logo used in README and website.
+- `Makefile` — root build/run/test commands; `go-*` targets delegate into
+  `golang/`, plain targets (`docker-up`, `test-all`, ...) operate the
+  Python reference server.
 
 ## Standard workflow
 
-1. Inspect current files with `rg` and focused `sed` reads.
-2. Keep C++ changes minimal and consistent with existing style.
-3. Keep Lua changes consistent with OpenResty idioms (`local`, module tables, shared dict).
-4. Update `README.md`, `nginx-lua/README.md`, `docs/`, `skills/`, and monitoring examples when behavior changes.
-5. Run focused validation first, then broader validation when practical.
-6. For docs-only changes, run `make docs-check`.
-7. For site updates, run `make docs-site`.
+1. Inspect current files with `rg` and focused reads.
+2. Keep Go changes idiomatic: small interfaces, `fmt.Errorf("...: %w", err)`
+   wrapping, table-driven tests, `gofmt`-clean.
+3. Update `README.md`, `golang/README.md`, `docs/`, `skills/`, and
+   monitoring examples when behavior changes.
+4. Run focused validation first (`cd golang && go build ./... && go vet
+   ./... && gofmt -l .`), then broader validation (`go test -race -cover
+   ./...`) when practical.
+5. For docs-only changes, run `make docs-check`.
+6. For site updates, run `make docs-site`.
 
 ## Build and validation commands
 
-### C++ edition
-
 ```bash
-make configure
-make build
-make test
-make test-mock-metrics
+make go-build
+make go-test        # go vet + gofmt -l + go test -race -cover ./...
+make go-test-e2e     # start the Docker stack, run test/e2e_test.sh against it
 make docs-check
 make docs-site
 ```
 
-### Nginx + Lua edition
+Or directly in `golang/`:
 
 ```bash
-cd nginx-lua
-make up
-make test
-make test-all
-make down
+go build ./...
+go vet ./...
+gofmt -l .
+go test -race -cover ./...
 ```
-
-## vcpkgproxy and build cache
-
-- Dependencies are resolved through the sibling `../vcpkgproxy` repository.
-- `make sync` is the online step that fills `vcpkg/`, `downloads/`,
-   `binary-cache/`, and cached helper binaries such as `sccache`.
-- `make build-all` is the offline build path that restores binary packages into
-   `installed/`, configures CMake with the vcpkg toolchain, and compiles with
-   `sccache`.
-- Keep Makefile variables `VCPKG_ROOT`, `VCPKG_DOWNLOADS`,
-   `VCPKG_DEFAULT_BINARY_CACHE`, and compiler launcher settings documented when
-   dependency handling changes.
 
 ## S3 JSON manifest registry contract
 
 - Persistence uses configurable manifest keys per bucket (default `.parparchik/files.json`).
 - Each bucket stores its own manifest with the configured key.
-- Startup reads manifests from all buckets into memory; if any are absent, it scans buckets, writes manifests, and then marks readiness healthy.
+- Startup (`resolver.Bootstrap`) reads manifests from all buckets into the
+  catalog, then runs one `SyncRegistry` reconcile pass against actual
+  bucket contents before marking readiness healthy. A background ticker
+  (`PARPARCHIK_SYNC_INTERVAL`, default 5m) repeats the reconcile
+  periodically. `GET /list` is a pure catalog read with no side effects —
+  it does **not** trigger a sync (unlike the retired Lua implementation).
 - Manifest output shape is `{version, bucket, files}` where `files` stores `key`, `bucket`, `route`, `size`, and `last_modified`.
-- Bucket priority determines which bucket wins for duplicate keys (first in config list has highest priority).
-- `POST /relocate` reverses this: last bucket wins when a file exists in multiple buckets. It moves the registry entry between manifests and persists all.
-- On miss or stale route, the service checks buckets in priority order, serves the resolved object, updates memory, refreshes metrics, and persists all manifests.
+- Bucket priority determines which bucket wins for duplicate keys (first in
+  config list has highest priority) — both for `SyncRegistry`'s bulk
+  reconciliation (`catalog.Register`) and for `Relocate`'s target-bucket
+  selection (`catalog.Set`, deliberately using the *first* matching
+  bucket, not the last — see `resolver.Relocate`'s doc comment for why).
+- `/public/<key>` and `/private/<key>` resolve by each bucket's configured
+  `public` flag (`resolver.resolveMissingFileByType`), not by string-matching
+  a literal bucket name — the retired Lua implementation compared route
+  strings, which only worked if a bucket happened to be named literally
+  `public`/`private`.
 
-## Nginx + Lua specific contracts
+## Security posture
 
-### Shared state via ngx.shared.DICT
-
-- All file entries stored as `file:<key>` → JSON in the `file_registry` shared dict.
-- Route index stored as `route:<route>` → key for reverse lookup.
-- Ready flag stored as `__ready__` → 1/0 (numeric, not boolean).
-- `registry:clear()` only removes file/route entries, not meta keys like `__ready__`.
-- Worker 0 runs the init timer; all workers share the same dict.
-
-### AWS SigV4 via FFI
-
-- HMAC-SHA256 uses `ffi.C.HMAC()` calling OpenSSL directly.
-- SHA-256 uses `resty.sha256` (bundled with OpenResty).
-- Presigned URLs use query-string signing with `UNSIGNED-PAYLOAD`.
-
-### Route matching
-
-- Routes use `/public/<key>` and `/private/<key>` prefixes (not bucket names).
-- When a file moves between buckets, requesting the old route returns 404.
-- `resolve_route()` checks that the resolved entry's route matches the requested route.
+- `PARPARCHIK_API_KEYS` (comma-separated) gates every route except
+  `/healthcheck`/`/readiness` behind an API key, checked via
+  `crypto/subtle.ConstantTimeCompare`. Left empty by default (open, for
+  local dev parity) — `cmd/parparchik` logs a startup warning when unset.
+  **Never deploy without setting this outside a trusted local network.**
+- `PARPARCHIK_RATE_LIMIT_PER_SECOND`/`_BURST` configure a per-client-IP
+  token-bucket limiter (`golang.org/x/time/rate`). Known limitation: keys
+  on `r.RemoteAddr`, which collapses to one bucket behind a reverse
+  proxy/ingress — see `internal/httpapi/middleware.go`'s doc comment
+  before relying on this as the sole mitigation in that topology.
+- `httpapi.validateKey` rejects empty keys, leading `/`, `..` path
+  segments, control characters, and overlong keys on every handler that
+  takes a key from client input (`/update`, `/relocate`, download routes).
 
 ## Kubernetes probe contract
 
-- `/healthcheck` is the requested liveness endpoint.
-- `/redines` is the requested readiness endpoint; `/readiness` is an alias.
-- Readiness returns HTTP 503 until startup load/backfill/reconcile completes.
+- `/healthcheck` is the liveness endpoint — always returns 200, never
+  gated by readiness, auth, or rate limiting.
+- `/redines` is the (intentionally kept, legacy-typo-compatible) readiness
+  endpoint; `/readiness` is the correctly-spelled alias. Both return HTTP
+  503 with `ready: false` until `Bootstrap` completes; neither is gated by
+  auth or rate limiting either.
 
 ## Monitoring contract
 
@@ -146,23 +152,24 @@ at the same time:
 | GET | `/status` | Service health, bucket names, file count |
 | GET | `/redines`, `/readiness` | Readiness probe (503 until startup completes) |
 | GET | `/healthcheck` | Liveness probe |
-| GET | `/list` | All registered files with bucket and route |
+| GET | `/list` | All registered files with bucket and route (pure read) |
 | GET | `/update?filename=<key>` | Locate file, repair manifests on miss (priority order) |
 | POST | `/relocate?filename=<key>` | Verify file, relocate between buckets |
 | GET | `/metrics` | Prometheus metrics |
-| GET | `/<bucket>/<key>` | 302 redirect to S3 URL (C++ edition) |
-| GET | `/public/<key>`, `/private/<key>` | 302 redirect to S3 URL (Nginx + Lua edition) |
+| GET | `/<bucket>/<key>` | 302 redirect to S3 URL |
+| GET | `/public/<key>`, `/private/<key>` | 302 redirect to S3 URL, resolved by bucket type |
 
 ## Documentation coverage contract
 
 When behavior changes, update all affected documentation surfaces:
 
 - `README.md` for quick start, public features, config, bucket setup guide, and Makefile command list.
-- `nginx-lua/README.md` for Nginx + Lua architecture, modules, and quick start.
+- `golang/README.md` for Go implementation architecture, package layout, and quick start.
 - `docs/index.md` for architecture, API, runtime flow, and feature overview.
 - `docs/operations.md` for build, run, config, bucket setup guide, S3 manifests,
    Kubernetes, Argo CD, and tests.
 - `docs/monitoring.md` for Prometheus, Alertmanager, Grafana, and metric test evidence.
+- `docs/plans/` when the roadmap or module/format task breakdown changes.
 - `docs/` by running `make docs-site` after source docs change.
 
 ## External links

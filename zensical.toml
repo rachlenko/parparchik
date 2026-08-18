@@ -10,7 +10,6 @@ copyright = "Copyright &copy; 2026 parparchik maintainers"
 nav = [
   { "Overview" = "index.md" },
   { "Operations" = "operations.md" },
-  { "Nginx + Lua" = "nginx-lua.md" },
   { "Monitoring" = "monitoring.md" },
   { "Procedures" = "procedures.md" },
 ]

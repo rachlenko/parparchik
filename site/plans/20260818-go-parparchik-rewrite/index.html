@@ -1,0 +1,1495 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="S3 file routing service documentation, operations, and monitoring guides.">
+      
+      
+        <meta name="author" content="parparchik maintainers">
+      
+      
+        <link rel="canonical" href="https://rachlenko.github.io/parparchik/plans/20260818-go-parparchik-rewrite/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="zensical-0.0.56">
+    
+    
+      
+        <title>Go Rewrite of parparchik (nginx-lua → golang/) - parparchik</title>
+      
+    
+    
+      
+        
+      
+      <link rel="stylesheet" href="../../assets/stylesheets/modern/main.20815dad.min.css">
+      
+        
+          
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/modern/palette.dfe2e883.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,500,500i,700,700i%7CJetBrains+Mono:400,400i,700,700i&amp;display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_scope.pathname.endsWith("/")||(__md_scope=new URL(__md_scope.pathname+"/",location)),__md_hash=e=>[...e].reduce(((e,t)=>(e<<5)-e+t.charCodeAt(0)),0),__md_get=(e,t=localStorage,_=__md_scope)=>JSON.parse(t.getItem(_.pathname+"."+e)),__md_set=(e,t,_=localStorage,a=__md_scope)=>{try{_.setItem(a.pathname+"."+e,JSON.stringify(t))}catch(e){}},document.documentElement.setAttribute("data-platform",navigator.platform)</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer" aria-label="Navigation"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#go-rewrite-of-parparchik-nginx-lua-golang" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="parparchik" class="md-header__button md-logo" aria-label="parparchik" data-md-component="logo">
+      
+  <img src="../../assets/logo.png" alt="parparchik">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer" aria-label="Navigation">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-menu" viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            parparchik
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Go Rewrite of parparchik (nginx-lua → golang/)
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="none" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="none" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-moon" viewBox="0 0 24 24"><path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search" aria-label="Search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog" aria-label="Search">
+  <button type="button" class="md-search__button">
+    Search
+  </button>
+</div>
+      
+    
+    <div class="md-header__source">
+      
+        <a href="https://github.com/rachlenko/parparchik" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    rachlenko/parparchik
+  </div>
+</a>
+      
+    </div>
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="parparchik" class="md-nav__button md-logo" aria-label="parparchik" data-md-component="logo">
+      
+  <img src="../../assets/logo.png" alt="parparchik">
+
+    </a>
+    parparchik
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/rachlenko/parparchik" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    rachlenko/parparchik
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-box" viewBox="0 0 24 24"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Overview
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operations/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-settings" viewBox="0 0 24 24"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Operations
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../monitoring/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-activity" viewBox="0 0 24 24"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Monitoring
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../procedures/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-list-checks" viewBox="0 0 24 24"><path d="M13 5h8M13 12h8M13 19h8M3 17l2 2 4-4M3 7l2 2 4-4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Procedures
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  
+                    
+                    
+                    
+                      
+                    
+                    
+                      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+                      <div class="md-sidebar-button__wrapper">
+                        <label class="md-sidebar-button" for="__toc"></label>
+                      </div>
+                    
+                  
+                  <div class="md-sidebar__inner">
+                    
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Overview
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#context" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Context
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#development-approach" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Development Approach
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing-strategy" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Testing Strategy
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#progress-tracking" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Progress Tracking
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#technical-details" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Technical Details
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Technical Details">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#review-findings-this-rewrite-does-not-replicate" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Review findings this rewrite does NOT replicate
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#catalogregister-vs-catalogset-a-deliberate-split-not-a-duplicate-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>catalog.Register</code> vs <code>catalog.Set</code> — a deliberate split, not a duplicate API
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#go-reviewer-pass-on-the-new-code-post-implementation" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        go-reviewer pass on the new code (post-implementation)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#extension-architecture-for-future-repository-formats" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Extension architecture for future repository formats
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#implementation-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Implementation Steps
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Implementation Steps">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#task-1-project-scaffolding-configuration-module" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Task 1: Project scaffolding &amp; configuration module
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-2-object-storage-abstraction" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Task 2: Object storage abstraction
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-3-in-memory-catalog-file-registry" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Task 3: In-memory catalog (file registry)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-4-repository-format-abstraction" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Task 4: Repository-format abstraction
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-5-route-resolver-core-business-logic" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Task 5: Route resolver (core business logic)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-6-http-api-layer" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Task 6: HTTP API layer
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-7-metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Task 7: Metrics
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-8-entrypoint-operational-wiring" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Task 8: Entrypoint &amp; operational wiring
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-9-deployment-parity" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Task 9: Deployment parity
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-11-close-testing-gaps-from-task-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Task 11: Close testing gaps from Task 2
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-12-verify-acceptance-criteria" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Task 12: Verify acceptance criteria
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-13-documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Task 13: Documentation
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-14-maven-repository-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Task 14: Maven repository format
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-15-npm-repository-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Task 15: npm repository format
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-16-pypi-repository-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Task 16: PyPI repository format
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-17-docker-oci-distribution-repository-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Task 17: Docker (OCI Distribution) repository format
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-18-helm-repository-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Task 18: Helm repository format
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-19-nuget-repository-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Task 19: NuGet repository format
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-20-debian-apt-repository-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Task 20: Debian (APT) repository format
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-21-rpm-yum-repository-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Task 21: RPM (yum) repository format
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-22-terraform-providermodule-registry-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Task 22: Terraform provider/module registry format
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-23-ml-model-repository-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Task 23: ML model repository format
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#feature-gap-analysis-nexus-vs-artifactory-2026-08-18" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Feature Gap Analysis: Nexus vs Artifactory (2026-08-18)
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Feature Gap Analysis: Nexus vs Artifactory (2026-08-18)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#priority-note" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Priority note
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-24-repository-types-hosted-proxy-virtualgroup" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Task 24: Repository types — hosted, proxy, virtual/group
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-25-vulnerability-scanning-repository-firewall" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Task 25: Vulnerability scanning / repository firewall
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-26-license-compliance-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Task 26: License compliance detection
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-27-sbom-generation-ingestion" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Task 27: SBOM generation &amp; ingestion
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-28-policy-engine" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Task 28: Policy engine
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-29-cleanup-retention-policies" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Task 29: Cleanup &amp; retention policies
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-30-replication" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Task 30: Replication
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-31-high-availability-clustering-needs-a-design-doc-first" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Task 31: High availability &amp; clustering — needs a design doc first
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-32-access-control-rbac-and-sso" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Task 32: Access control — RBAC and SSO
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-33-webhooks-event-notifications" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Task 33: Webhooks &amp; event notifications
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-34-reporting-dashboards-cross-repo-search" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Task 34: Reporting, dashboards &amp; cross-repo search
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-35-backup-disaster-recovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Task 35: Backup &amp; disaster recovery
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#post-completion" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Post-Completion
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+  
+  
+
+
+<h1 id="go-rewrite-of-parparchik-nginx-lua-golang">Go Rewrite of parparchik (nginx-lua → golang/)<a class="headerlink" href="#go-rewrite-of-parparchik-nginx-lua-golang" title="Permanent link">&para;</a></h1>
+<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
+<p>parparchik already has C++, Python, and OpenResty+Lua implementations of
+the same S3 file-routing/registry service. This plan adds a fourth,
+<code>golang/</code>, on branch <code>go-rewrite</code>: a clean, idiomatic Go implementation that
+is functionally compatible with the others (same REST API, same env vars,
+same MinIO/S3 stack) but built to be <em>extended</em> into a general
+Artifactory-style multi-format artifact repository — Maven, npm, PyPI,
+Docker, Helm, NuGet, Debian, RPM, Terraform, ML models, and more — without
+having to rewrite the core catalog/storage/routing layers again for each
+new format.</p>
+<p>The immediate driver was a code review and a security review of
+<code>nginx-lua/lua/*.lua</code>, which found the Lua implementation has real bugs
+(not just style issues) worth fixing rather than porting as-is — see
+Technical Details below.</p>
+<p>Tasks 14–23 cover per-format support; Tasks 24–35 cover the Nexus/
+Artifactory-class capabilities (proxy/virtual repositories, vulnerability
+scanning, policy engine, HA, RBAC, and more) identified in the "Feature Gap
+Analysis" section near the end of this document, added after reviewing a
+Sonatype Nexus-vs-Artifactory feature comparison.</p>
+<h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Source of truth for current behavior: <code>nginx-lua/lua/{config,aws_sig,s3,registry,metrics,handlers}.lua</code>, <code>nginx-lua/nginx.conf</code>, <code>nginx-lua/README.md</code>.</li>
+<li>New implementation lives entirely under <code>golang/</code> at the repo root, parallel to <code>nginx-lua/</code>, <code>src/</code> (C++), and <code>server.py</code> (Python).</li>
+<li>Module path: <code>github.com/rachlenko/parparchik/golang</code>.</li>
+<li>Adopted findings from two review passes (code-reviewer and security-reviewer agents) run directly against <code>nginx-lua/</code> — see Technical Details for the specific bugs found and how this rewrite handles each one.</li>
+<li>Constraint from the requester: idiomatic Go design, and an architecture that can grow to support the repository formats listed at jfrog.com/artifactory (Maven/Java, npm/Node.js, PyPI/Python, Docker, Helm, NuGet/.NET, Debian, RPM, Terraform, ML Models, and more) without a rewrite.</li>
+</ul>
+<h2 id="development-approach">Development Approach<a class="headerlink" href="#development-approach" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Testing approach: regular (code + tests together per task, not strict red-green TDD) for the initial port in Tasks 1–8, since the target behavior was already fully known from the Lua source and its review findings before any Go code was written. Every <em>future</em> format-addition task (Tasks 10+) should follow TDD — write the format's route-parsing tests first, since those are pure functions with no external dependencies.</li>
+<li>Complete each task fully (including its tests) before moving to the next.</li>
+<li>Small interfaces, defined where they're consumed or as a deliberate shared abstraction seam (<code>objectstore.Store</code>, <code>format.Format</code>) — not one god-interface.</li>
+<li>No half-finished implementations: <code>internal/format</code> ships with exactly one working implementation (<code>generic</code>) and a clean extension interface; it does <strong>not</strong> ship empty stub packages for the other formats (that would be dead code sitting in the tree — YAGNI). Each future format is its own task, done when there's an actual consumer for it.</li>
+<li>Update this plan file if scope changes.</li>
+</ul>
+<h2 id="testing-strategy">Testing Strategy<a class="headerlink" href="#testing-strategy" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Unit tests required for every task, table-driven, Arrange/Act/Assert.</li>
+<li><code>go test -race -cover ./...</code> must pass before moving to the next task.</li>
+<li>No mocking framework — small hand-written fakes (<code>fakeStore</code> per package) satisfying the real <code>objectstore.Store</code> interface, so tests exercise real interface contracts.</li>
+<li><code>internal/objectstore</code>'s actual AWS SDK call sites are intentionally <em>not</em> unit-tested against a mocked transport in this pass (would need <code>aws-sdk-go-v2</code>'s test harness or a real MinIO container) — tracked as a gap in Task 11, not silently dropped.</li>
+</ul>
+<h2 id="progress-tracking">Progress Tracking<a class="headerlink" href="#progress-tracking" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Mark completed items with <code>[x]</code> immediately when done.</li>
+<li>Add newly discovered tasks with ➕ prefix.</li>
+<li>Document issues/blockers with ⚠️ prefix.</li>
+</ul>
+<h2 id="technical-details">Technical Details<a class="headerlink" href="#technical-details" title="Permanent link">&para;</a></h2>
+<h3 id="review-findings-this-rewrite-does-not-replicate">Review findings this rewrite does NOT replicate<a class="headerlink" href="#review-findings-this-rewrite-does-not-replicate" title="Permanent link">&para;</a></h3>
+<p>From the code review (correctness) and security review of <code>nginx-lua/</code>:</p>
+<ol>
+<li><strong>S3 client wiring bug</strong> (<code>handlers.lua:26</code> vs <code>s3.lua:10</code>) — the client
+   constructor was called with four positional args where it expected one
+   config table; every field silently resolved to empty, so the service
+   always talked to public AWS with empty credentials, never the
+   configured <code>S3_ENDPOINT</code>. Go: <code>objectstore.NewS3Store</code> takes a single
+   <code>*config.Config</code>, and uses <code>aws-sdk-go-v2</code>'s typed <code>aws.Config</code>/<code>s3.Options</code> —
+   this class of bug is structurally impossible.</li>
+<li><strong>No authentication anywhere</strong> — any unauthenticated client could
+   enumerate all files via <code>GET /list</code> and download "private" bucket
+   objects via server-generated presigned URLs. Go: optional API-key
+   middleware (<code>internal/httpapi.AuthConfig</code>, <code>PARPARCHIK_API_KEYS</code>),
+   applied to every route except <code>/healthcheck</code>/<code>/readiness</code>. Off by
+   default (open, matching the original) but logs a loud startup warning
+   when unset.</li>
+<li><strong><code>/public/&lt;key&gt;</code> / <code>/private/&lt;key&gt;</code> were dead routes</strong> unless a bucket
+   was literally named <code>public</code>/<code>private</code> (this project's own
+   <code>docker-compose.yml</code> uses <code>public-bucket</code>/<code>private-bucket</code>). Go:
+   <code>resolver.resolveMissingFileByType</code> resolves by the bucket's <code>Public</code>
+   flag, not by string-comparing the reconstructed route.</li>
+<li><strong>No input validation on <code>filename</code></strong>, used directly as an S3 key —
+   path traversal / control-character risk on any S3-compatible backend
+   that maps keys to real filesystem paths. Go: <code>httpapi.validateKey</code>
+   rejects empty keys, leading <code>/</code>, <code>..</code> segments, control bytes, and
+   overlong keys at the HTTP boundary, before it ever reaches storage.</li>
+<li><strong><code>GET /list</code> had write side effects</strong> (full multi-bucket listing +
+   manifest <code>PUT</code> to every bucket, every single request) and no rate
+   limiting. Go: reconciliation runs once at <code>Bootstrap</code> and on a
+   configurable ticker (<code>PARPARCHIK_SYNC_INTERVAL</code>); <code>GET /list</code> is a pure
+   catalog read. A per-IP token-bucket rate limiter
+   (<code>golang.org/x/time/rate</code>) covers every route except the health probes.</li>
+<li><strong><code>handle_relocate</code> picked the last matching bucket</strong> in config order,
+   contradicting the priority convention <code>register_file</code> and
+   <code>resolve_missing_file</code> both use elsewhere in the same file. Go:
+   <code>resolver.Relocate</code> picks the highest-priority (first-configured)
+   bucket, consistently.</li>
+<li><strong>Hand-rolled SigV4 had real bugs</strong> (double-encoded pagination
+   continuation tokens breaking signatures on &gt;1000-object buckets;
+   canonical-path vs wire-path mismatches for keys with special
+   characters). Go: <code>aws-sdk-go-v2</code> handles signing and canonicalization.</li>
+<li><strong>Multi-worker init only ran on <code>nginx</code> worker 0</strong> (<code>ngx.worker.id() ==
+   0</code>), so every other worker returned 500 on any multi-core host. Go's
+   single-process/goroutine model has no equivalent failure mode.</li>
+<li><strong><code>ngx.shared.DICT</code> read-modify-write races</strong> across <code>file:&lt;key&gt;</code>,
+   <code>route:&lt;route&gt;</code>, and <code>__all_keys__</code> as separate dict entries. Go:
+   <code>internal/catalog.Catalog</code> is a single mutex-guarded struct — updates to
+   an entry and its route index happen under one lock.</li>
+</ol>
+<h3 id="catalogregister-vs-catalogset-a-deliberate-split-not-a-duplicate-api"><code>catalog.Register</code> vs <code>catalog.Set</code> — a deliberate split, not a duplicate API<a class="headerlink" href="#catalogregister-vs-catalogset-a-deliberate-split-not-a-duplicate-api" title="Permanent link">&para;</a></h3>
+<p><code>Register</code> applies bucket-priority conflict resolution (lower configured
+index wins) and is used by <code>resolver.SyncRegistry</code>, which scans <em>all</em>
+buckets in one pass and may see the same key appear in more than one
+bucket during that scan — priority is what makes that outcome
+deterministic.</p>
+<p><code>Set</code> unconditionally overwrites and is used by
+<code>resolver.ResolveMissingFile</code>, <code>resolveMissingFileByType</code>, and <code>Relocate</code> —
+each of which already searched buckets in priority order and stopped at
+the first confirmed HEAD hit, so priority was already applied at the
+search level. Using <code>Register</code> in those call sites was tried first and
+caught a real bug in this branch's own test suite: a stale catalog entry
+pointing at a higher-priority bucket (whose copy of the file had since
+been deleted directly in storage, outside this service) permanently
+blocked the correct lower-priority reconciliation update, because
+<code>Register</code>'s priority check compared against the stale entry and silently
+no-op'd. <code>Set</code> exists specifically for "the caller just confirmed via a
+direct storage check where this lives right now" — see
+<code>internal/catalog/catalog.go</code>'s doc comments and
+<code>internal/resolver/resolver_test.go</code>'s
+<code>TestResolveRoute_StaleCatalogEntryReResolvesElsewhere</code>.</p>
+<h3 id="go-reviewer-pass-on-the-new-code-post-implementation">go-reviewer pass on the new code (post-implementation)<a class="headerlink" href="#go-reviewer-pass-on-the-new-code-post-implementation" title="Permanent link">&para;</a></h3>
+<p>A <code>go-reviewer</code> agent audited the finished <code>golang/</code> tree independently and
+confirmed the <code>Register</code>/<code>Set</code> split above is sound and correctly
+regression-tested. It found one HIGH bug (the <code>PublicURL</code> scheme-doubling
+issue folded into Task 2 above, now fixed) and several smaller items,
+addressed as follows:</p>
+<ul>
+<li><strong>Sentinel error compared with <code>==</code></strong> instead of <code>errors.Is</code> in
+  <code>httpapi.handleRelocate</code> — fixed; would have silently broken (404 →
+  false 500) the moment <code>Relocate</code> started wrapping the error with <code>%w</code>,
+  which every other error path in the package already does.</li>
+<li><strong>Inconsistent persist-failure handling</strong> across resolver mutators
+  (<code>Relocate</code> fails loud, others log-and-continue) — this was intentional
+  but undocumented; now has an explicit policy comment on the <code>resolver</code>
+  package doc: HEAD-confirmed reconciliation paths are best-effort because
+  the in-memory catalog is already correct and the periodic sync will
+  retry the write, while <code>Relocate</code> is a synchronous user action that
+  should tell the caller if the durable write failed.</li>
+<li><strong>Rate limiter keys on <code>RemoteAddr</code></strong>, which collapses to one shared
+  bucket behind a reverse proxy/ingress — documented as a known scope cut
+  (needs a trusted-proxy-aware forwarded-header lookup to fix safely,
+  which was out of scope for this pass) rather than silently left
+  unexplained.</li>
+<li><strong>API key comparison via constant-time compare</strong> — switched from a map
+  lookup to <code>crypto/subtle.ConstantTimeCompare</code> per configured key, cheap
+  defense-in-depth given the small number of expected keys.</li>
+<li><strong><code>LoadManifests</code>' reverse-iteration</strong> was dead complexity (<code>Register</code>'s
+  own priority check already makes application order irrelevant) —
+  simplified to a plain forward loop and the comment corrected.</li>
+</ul>
+<h3 id="extension-architecture-for-future-repository-formats">Extension architecture for future repository formats<a class="headerlink" href="#extension-architecture-for-future-repository-formats" title="Permanent link">&para;</a></h3>
+<p><code>internal/format.Format</code> is the seam:</p>
+<div class="language-go highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kd">type</span><span class="w"> </span><span class="nx">Format</span><span class="w"> </span><span class="kd">interface</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="nx">Name</span><span class="p">()</span><span class="w"> </span><span class="kt">string</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nx">Route</span><span class="p">(</span><span class="nx">bucket</span><span class="p">,</span><span class="w"> </span><span class="nx">key</span><span class="w"> </span><span class="kt">string</span><span class="p">)</span><span class="w"> </span><span class="kt">string</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nx">ParseRoute</span><span class="p">(</span><span class="nx">route</span><span class="w"> </span><span class="kt">string</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nx">bucket</span><span class="p">,</span><span class="w"> </span><span class="nx">key</span><span class="w"> </span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="nx">ok</span><span class="w"> </span><span class="kt">bool</span><span class="p">)</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="p">}</span>
+</span></code></pre></div>
+<p>A new format is a new package implementing this interface plus whatever
+format-specific index documents and HTTP sub-router it needs, built on top
+of the existing <code>catalog.Catalog</code> (rename/generalize to a multi-format
+index if a format needs richer metadata than <code>Entry</code> provides — evaluate
+per format, don't pre-generalize speculatively) and <code>objectstore.Store</code>.
+<code>cmd/parparchik</code> mounts each enabled format's sub-router alongside the
+existing <code>httpapi</code> routes. See Tasks 10–20 below for the per-format
+breakdown; each is deliberately its own task, started only when there's a
+real need for that format, not pre-built as a stub.</p>
+<h2 id="implementation-steps">Implementation Steps<a class="headerlink" href="#implementation-steps" title="Permanent link">&para;</a></h2>
+<h3 id="task-1-project-scaffolding-configuration-module">Task 1: Project scaffolding &amp; configuration module<a class="headerlink" href="#task-1-project-scaffolding-configuration-module" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>go.mod</code> (module <code>github.com/rachlenko/parparchik/golang</code>)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>internal/config</code>: env var parsing — <code>PARPARCHIK_BUCKETS</code> list and legacy <code>PARPARCHIK_PUBLIC_BUCKET</code>/<code>PARPARCHIK_PRIVATE_BUCKET</code> pair, plus new <code>PARPARCHIK_API_KEYS</code>, <code>PARPARCHIK_RATE_LIMIT_PER_SECOND</code>, <code>PARPARCHIK_RATE_LIMIT_BURST</code>, <code>PARPARCHIK_SYNC_INTERVAL</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> write tests for config parsing (success + error cases)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> run project tests - must pass before next task</li>
+</ul>
+<h3 id="task-2-object-storage-abstraction">Task 2: Object storage abstraction<a class="headerlink" href="#task-2-object-storage-abstraction" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>internal/objectstore.Store</code> interface (List/Head/Get/Put/PublicURL/PresignedURL)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>S3Store</code> implementation on <code>aws-sdk-go-v2</code> (custom-endpoint MinIO support, path-style addressing, static or default credential chain)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>resolveEndpointURL</code> scheme handling (bare <code>host:port</code> defaults to <code>http://</code> with a warning; full <code>scheme://</code> URLs honored as-is)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> write tests for <code>resolveEndpointURL</code> and <code>PublicURL</code> (including the scheme-qualified-external-endpoint case a go-reviewer pass caught as a HIGH bug — see below)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> run project tests - must pass before next task</li>
+<li>⚠️ Fixed during review: <code>PublicURL</code> unconditionally prepended <code>"http://"</code> even when <code>S3_EXTERNAL_ENDPOINT</code> already had a scheme (e.g. <code>https://cdn.example.com</code>), producing a malformed <code>"http://https://..."</code> redirect URL. Fixed by resolving the external endpoint's scheme once in <code>NewS3Store</code> via <code>resolveEndpointURL</code>, same as the internal endpoint.</li>
+<li>⚠️ Still not covered: unit tests for <code>ListObjects</code>/<code>HeadObject</code>/<code>GetObject</code>/<code>PutObject</code> against a mocked/faked AWS transport (only pure helpers and <code>PublicURL</code> are tested; <code>objectstore</code> coverage is 34%, up from 6.5%) — tracked in Task 11.</li>
+</ul>
+<h3 id="task-3-in-memory-catalog-file-registry">Task 3: In-memory catalog (file registry)<a class="headerlink" href="#task-3-in-memory-catalog-file-registry" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>internal/catalog.Catalog</code>: mutex-guarded map, <code>Entry</code>/<code>Manifest</code> types</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>Register</code> (priority-based conflict resolution) and <code>Set</code> (unconditional overwrite) — see Technical Details for why both exist</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>LoadManifests</code> (bare-array and <code>{"files":[...]}</code> envelope support, entry-embedded bucket override)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> write tests for register/set/move/remove/list/manifest-loading (success + conflict + malformed-input cases)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> run project tests - must pass before next task</li>
+</ul>
+<h3 id="task-4-repository-format-abstraction">Task 4: Repository-format abstraction<a class="headerlink" href="#task-4-repository-format-abstraction" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>internal/format.Format</code> interface + <code>Registry</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>internal/format/generic</code>: today's flat bucket/key routing</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> write tests for <code>generic.Format</code> route building/parsing (including edge cases: missing key, no leading slash, nested keys)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> run project tests - must pass before next task</li>
+</ul>
+<h3 id="task-5-route-resolver-core-business-logic">Task 5: Route resolver (core business logic)<a class="headerlink" href="#task-5-route-resolver-core-business-logic" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>internal/resolver.Resolver</code>: <code>Bootstrap</code>, <code>PersistManifests</code>, <code>SyncRegistry</code>, <code>ResolveMissingFile</code>, <code>ResolveRoute</code>, <code>resolveMissingFileByType</code>, <code>Relocate</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>Bootstrap</code> performs an initial <code>SyncRegistry</code> reconcile pass (see finding #5 in Technical Details) so <code>GET /list</code> can be a pure read</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> write tests using a hand-written <code>fakeStore</code> (route resolution, stale-entry reconciliation, virtual <code>/public//private/</code> prefix-by-type resolution, relocate priority/duplicate handling, sync duplicate detection)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> run project tests - must pass before next task</li>
+</ul>
+<h3 id="task-6-http-api-layer">Task 6: HTTP API layer<a class="headerlink" href="#task-6-http-api-layer" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>internal/httpapi.API</code>: routes via Go 1.22+ <code>http.ServeMux</code> method+wildcard patterns, readiness gating</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>validateKey</code> (path-traversal/control-character rejection)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>AuthConfig</code> API-key middleware + <code>ipRateLimiter</code> per-IP rate-limit middleware (with idle-entry eviction so it doesn't grow unbounded)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> health/readiness probes bypass both auth and rate limiting</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> write tests: readiness gating, status bucket-by-type derivation, update/relocate/download handlers, auth middleware accept/reject, rate limiter burst/probe-bypass behavior</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> run project tests - must pass before next task</li>
+</ul>
+<h3 id="task-7-metrics">Task 7: Metrics<a class="headerlink" href="#task-7-metrics" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>internal/metricsapi</code>: Prometheus gauges via <code>client_golang</code> (<code>parparchik_volume_files</code>, <code>parparchik_duplicate_files</code>, <code>parparchik_uploads_per_week</code>, <code>parparchik_uploads_per_month</code>)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> write tests (gauge values, stale-label reset on bucket removal, upload-window boundaries)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> run project tests - must pass before next task</li>
+</ul>
+<h3 id="task-8-entrypoint-operational-wiring">Task 8: Entrypoint &amp; operational wiring<a class="headerlink" href="#task-8-entrypoint-operational-wiring" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>cmd/parparchik/main.go</code>: config load → S3 store → catalog → resolver → metrics → API, with functional options (<code>WithAuth</code>, <code>WithRateLimit</code>)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> background bootstrap goroutine (server accepts <code>/healthcheck</code>/<code>/readiness</code> traffic reporting not-ready while it runs)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> periodic background sync goroutine (<code>PARPARCHIK_SYNC_INTERVAL</code>)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> graceful shutdown on SIGINT/SIGTERM</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> run project tests - must pass before next task</li>
+</ul>
+<h3 id="task-9-deployment-parity">Task 9: Deployment parity<a class="headerlink" href="#task-9-deployment-parity" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>golang/Dockerfile</code> (multi-stage, distroless nonroot final image)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>golang/docker-compose.yml</code> (MinIO + bucket bootstrap, mirroring <code>nginx-lua/docker-compose.yml</code>)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>golang/README.md</code> (config table, package layout, extension guide, "why a rewrite not a port" section)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> port <code>nginx-lua/test/e2e_test.sh</code>'s 24 assertions (or an equivalent Go-native e2e test) against <code>golang/docker-compose.yml</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> run e2e suite against a live <code>docker compose up</code></li>
+</ul>
+<h3 id="task-11-close-testing-gaps-from-task-2">Task 11: Close testing gaps from Task 2<a class="headerlink" href="#task-11-close-testing-gaps-from-task-2" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> add S3-call-site tests for <code>objectstore.S3Store</code> against either a real MinIO test container or <code>aws-sdk-go-v2</code>'s HTTP transport mocking (<code>smithy-go</code> middleware test doubles)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> target ≥80% coverage for <code>internal/objectstore</code> (currently ~6%, pure-helper-only)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> run project tests - must pass before next task</li>
+</ul>
+<h3 id="task-12-verify-acceptance-criteria">Task 12: Verify acceptance criteria<a class="headerlink" href="#task-12-verify-acceptance-criteria" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> verify every requirement in Overview is implemented (<code>go build ./...</code>, <code>go vet ./...</code>, <code>gofmt -l .</code> clean, <code>go test -race -cover ./...</code> passing)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> verify all nine "does NOT replicate" findings in Technical Details have a corresponding test (several already do — audit for gaps)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> run full project test suite</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> run project linter (<code>go vet</code>; consider adding <code>golangci-lint</code> — not yet in this repo)</li>
+</ul>
+<h3 id="task-13-documentation">Task 13: Documentation<a class="headerlink" href="#task-13-documentation" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> add <code>golang/</code> as a fourth implementation option in the repo root <code>README.md</code>'s comparison table (alongside C++/Python/Lua)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> update <code>golang/README.md</code> if scope changed during implementation</li>
+</ul>
+<hr />
+<p>The tasks below are the future-format roadmap the user asked the
+architecture to support. Each is independent, sized as its own multi-day
+effort, and intentionally <strong>not started</strong> — <code>internal/format</code> ships today
+with zero stub packages for these (see Development Approach). Start
+whichever is actually needed next; there's no required order among them
+except that each should look at how <code>generic</code> mounts into <code>httpapi</code> first.</p>
+<h3 id="task-14-maven-repository-format">Task 14: Maven repository format<a class="headerlink" href="#task-14-maven-repository-format" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>internal/format/maven</code>: groupId/artifactId/version path layout, <code>Route</code>/<code>ParseRoute</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>maven-metadata.xml</code> generation (versioning, snapshot timestamps) served from catalog state</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> mount format's HTTP sub-router in <code>cmd/parparchik</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> write tests for path parsing and metadata generation</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> run project tests - must pass before next task</li>
+</ul>
+<h3 id="task-15-npm-repository-format">Task 15: npm repository format<a class="headerlink" href="#task-15-npm-repository-format" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>internal/format/npm</code>: scoped/unscoped package routes, tarball URLs</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> package metadata JSON responses (<code>GET /&lt;pkg&gt;</code>, <code>GET /&lt;pkg&gt;/-/&lt;pkg&gt;-&lt;version&gt;.tgz</code>)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> mount format's HTTP sub-router</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> write tests</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> run project tests - must pass before next task</li>
+</ul>
+<h3 id="task-16-pypi-repository-format">Task 16: PyPI repository format<a class="headerlink" href="#task-16-pypi-repository-format" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>internal/format/pypi</code>: simple index (PEP 503) and JSON API (PEP 691) responses</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> mount format's HTTP sub-router</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> write tests</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> run project tests - must pass before next task</li>
+</ul>
+<h3 id="task-17-docker-oci-distribution-repository-format">Task 17: Docker (OCI Distribution) repository format<a class="headerlink" href="#task-17-docker-oci-distribution-repository-format" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>internal/format/docker</code>: OCI Distribution Spec v2 API (<code>/v2/...</code>), manifest/blob/tag handling</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> mount format's HTTP sub-router</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> write tests</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> run project tests - must pass before next task</li>
+</ul>
+<h3 id="task-18-helm-repository-format">Task 18: Helm repository format<a class="headerlink" href="#task-18-helm-repository-format" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>internal/format/helm</code>: <code>index.yaml</code> generation, chart tarball routes</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> mount format's HTTP sub-router</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> write tests</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> run project tests - must pass before next task</li>
+</ul>
+<h3 id="task-19-nuget-repository-format">Task 19: NuGet repository format<a class="headerlink" href="#task-19-nuget-repository-format" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>internal/format/nuget</code>: NuGet V3 API (service index, package base address, registration)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> mount format's HTTP sub-router</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> write tests</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> run project tests - must pass before next task</li>
+</ul>
+<h3 id="task-20-debian-apt-repository-format">Task 20: Debian (APT) repository format<a class="headerlink" href="#task-20-debian-apt-repository-format" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>internal/format/debian</code>: <code>Release</code>/<code>Packages</code>(.gz) index generation, pool layout</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> mount format's HTTP sub-router</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> write tests</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> run project tests - must pass before next task</li>
+</ul>
+<h3 id="task-21-rpm-yum-repository-format">Task 21: RPM (yum) repository format<a class="headerlink" href="#task-21-rpm-yum-repository-format" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>internal/format/rpm</code>: <code>repodata</code> (repomd.xml, primary.xml.gz) generation</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> mount format's HTTP sub-router</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> write tests</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> run project tests - must pass before next task</li>
+</ul>
+<h3 id="task-22-terraform-providermodule-registry-format">Task 22: Terraform provider/module registry format<a class="headerlink" href="#task-22-terraform-providermodule-registry-format" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>internal/format/terraform</code>: Terraform Registry Protocol (provider + module discovery/download endpoints)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> mount format's HTTP sub-router</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> write tests</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> run project tests - must pass before next task</li>
+</ul>
+<h3 id="task-23-ml-model-repository-format">Task 23: ML model repository format<a class="headerlink" href="#task-23-ml-model-repository-format" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>internal/format/mlmodel</code>: define a layout (e.g. MLflow-model-registry-compatible or a simple versioned-artifact scheme) — needs a design decision before implementation, not just a port</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> mount format's HTTP sub-router</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> write tests</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> run project tests - must pass before next task</li>
+</ul>
+<hr />
+<h2 id="feature-gap-analysis-nexus-vs-artifactory-2026-08-18">Feature Gap Analysis: Nexus vs Artifactory (2026-08-18)<a class="headerlink" href="#feature-gap-analysis-nexus-vs-artifactory-2026-08-18" title="Permanent link">&para;</a></h2>
+<p>Source: https://www.sonatype.com/compare/sonatype-nexus-versus-jfrog-artifactory
+— a Sonatype-authored vendor comparison, so its head-to-head claims
+("Nexus is 80% more accurate", "Artifactory has no depth of SCA") are
+marketing and not treated as engineering requirements here. What's useful
+is the <em>feature taxonomy</em> both products compete on — every capability
+listed below is something a real Nexus/Artifactory deployment is expected
+to have, regardless of which vendor does it better. Tasks 14–23 above only
+cover repository <em>formats</em>; the tasks in this section cover the
+capabilities that make a multi-format repository actually operate like
+Nexus/Artifactory rather than just serve files in more shapes. None of
+these are started; <code>internal/</code> has no packages for them yet, by the same
+no-stub-code policy as Tasks 14–23.</p>
+<h3 id="priority-note">Priority note<a class="headerlink" href="#priority-note" title="Permanent link">&para;</a></h3>
+<p>Task 24 (repository types: hosted/proxy/virtual) should come <strong>before</strong>
+most of Tasks 14–23, not after — it's orthogonal to format and multiplies
+the value of every format package that exists or gets added: a <code>generic</code>
+or <code>maven</code> format is far more useful as a caching <em>proxy</em> in front of the
+real npm/Maven Central/PyPI than as a hosted-only store, which is the
+single most-used feature of both Nexus and Artifactory in practice. Task
+25 (vulnerability scanning / firewall) and Task 28 (policy engine) are the
+next-highest-value pair, since they're the comparison page's entire focus
+and the most differentiating capability of this product class. The rest
+(31–35) are operational/enterprise maturity items — valuable, but only
+once there's a real multi-tenant deployment to operate.</p>
+<h3 id="task-24-repository-types-hosted-proxy-virtualgroup">Task 24: Repository types — hosted, proxy, virtual/group<a class="headerlink" href="#task-24-repository-types-hosted-proxy-virtualgroup" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> extend <code>config.Bucket</code>/introduce a <code>Repository</code> type with <code>Kind: hosted | proxy | virtual</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>proxy</strong> repositories: fetch-through cache in front of a configured upstream URL (real npm/PyPI/Maven Central/Docker Hub/etc.), with a TTL and on-miss fetch-and-store into <code>objectstore</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>virtual/group</strong> repositories: aggregate multiple hosted+proxy repositories under one namespace/route, with configurable resolution order (mirrors <code>config.Bucket</code>'s existing priority convention)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>internal/resolver</code> gains a "not in catalog, not in any hosted bucket, but repo is a proxy — fetch upstream" path</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> write tests (proxy cache hit/miss/expiry, virtual repo resolution order, upstream fetch failure handling)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> run project tests - must pass before next task</li>
+</ul>
+<h3 id="task-25-vulnerability-scanning-repository-firewall">Task 25: Vulnerability scanning / repository firewall<a class="headerlink" href="#task-25-vulnerability-scanning-repository-firewall" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>internal/scan</code>: pluggable <code>Scanner</code> interface — implementations query a vulnerability data source (e.g. OSV.dev's free API, since this project has no Sonatype OSS Index/Nexus IQ license) for a package+version and return findings (CVE IDs, severity)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> quarantine-on-ingest hook: scan before a newly uploaded or proxy-cached artifact becomes downloadable; hold in quarantine on a policy-configured severity threshold until reviewed</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>GET /status</code>-style endpoint exposing quarantined items and why</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> write tests with a fake <code>Scanner</code> (clean package, vulnerable package, scanner-unavailable fallback behavior)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> run project tests - must pass before next task</li>
+</ul>
+<h3 id="task-26-license-compliance-detection">Task 26: License compliance detection<a class="headerlink" href="#task-26-license-compliance-detection" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>internal/license</code>: extract declared license from format-specific metadata (npm <code>package.json</code> <code>license</code> field, Python <code>METADATA</code>/<code>PKG-INFO</code>, Maven POM <code>&lt;licenses&gt;</code>, ...) — one small adapter per format package from Tasks 14–23, not a new universal parser</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> normalize to SPDX identifiers where possible</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> expose via catalog entry metadata + an optional policy check (Task 28) blocking disallowed licenses</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> write tests per adapter (known-license, missing-license, malformed-metadata cases)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> run project tests - must pass before next task</li>
+</ul>
+<h3 id="task-27-sbom-generation-ingestion">Task 27: SBOM generation &amp; ingestion<a class="headerlink" href="#task-27-sbom-generation-ingestion" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>internal/sbom</code>: generate a CycloneDX (or SPDX) SBOM document per repository/artifact from catalog + license (Task 26) + scan (Task 25) data</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> accept externally-generated SBOMs on upload, store alongside the artifact's manifest entry</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>GET /sbom?...</code> endpoint</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> write tests (generation from known catalog state, ingestion round-trip)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> run project tests - must pass before next task</li>
+</ul>
+<h3 id="task-28-policy-engine">Task 28: Policy engine<a class="headerlink" href="#task-28-policy-engine" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>internal/policy</code>: rule evaluation over scan (Task 25) + license (Task 26) + artifact metadata — e.g. "block CVSS ≥ 7", "block GPL-family licenses", "block packages published &lt; 4 days ago" (a real malware-mitigation technique: most malicious packages are pulled within days)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> wire into the upload path and the proxy fetch-through path (Task 24) as an allow/quarantine/deny gate</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> waivers: an explicit, audited override for a specific package+version</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> audit log of policy decisions</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> write tests (allow, block, waiver override, malformed-rule handling)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> run project tests - must pass before next task</li>
+</ul>
+<h3 id="task-29-cleanup-retention-policies">Task 29: Cleanup &amp; retention policies<a class="headerlink" href="#task-29-cleanup-retention-policies" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>internal/cleanup</code>: per-repository rules (max age, max version count, max total size) for pruning old artifacts — mainly relevant to proxy caches (Task 24) and snapshot-style hosted repos</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> scheduled GC goroutine (reuses the periodic-ticker pattern already in <code>cmd/parparchik</code>)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> dry-run mode reporting what would be deleted before actually deleting</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> write tests</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> run project tests - must pass before next task</li>
+</ul>
+<h3 id="task-30-replication">Task 30: Replication<a class="headerlink" href="#task-30-replication" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>internal/replication</code>: push or pull artifact/manifest sync between two parparchik instances (for edge caching or DR), building on the existing manifest-as-source-of-truth design in <code>resolver.PersistManifests</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> conflict handling reuses <code>catalog</code>'s existing priority/<code>Set</code> semantics — no new conflict model needed</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> write tests</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> run project tests - must pass before next task</li>
+</ul>
+<h3 id="task-31-high-availability-clustering-needs-a-design-doc-first">Task 31: High availability &amp; clustering — needs a design doc first<a class="headerlink" href="#task-31-high-availability-clustering-needs-a-design-doc-first" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Architectural blocker, not a drop-in task</strong>: <code>internal/catalog.Catalog</code> is an in-process map today. Running more than one instance behind a load balancer means two processes each have their own, divergent view of the registry — <code>Bootstrap</code>'s reconcile-from-storage step is the only thing keeping them roughly consistent, on the sync interval, not in real time.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> design doc: externalize catalog state to a shared backend (e.g. Redis, Postgres, or etcd) behind the <em>same</em> <code>Catalog</code> method signatures, so <code>resolver</code>/<code>httpapi</code> don't change — this is exactly what the <code>catalog</code> package's small, already-abstracted API is for</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> evaluate whether <code>objectstore</code>-only reconciliation (current design) is actually sufficient for a first HA pass before building a distributed catalog — it might be, given manifests are already the durable source of truth</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> write tests once a design is chosen</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> run project tests - must pass before next task</li>
+</ul>
+<h3 id="task-32-access-control-rbac-and-sso">Task 32: Access control — RBAC and SSO<a class="headerlink" href="#task-32-access-control-rbac-and-sso" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>internal/authz</code>: replace the flat <code>PARPARCHIK_API_KEYS</code> list (Task 6) with per-repository and per-path permissions, roles/groups</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> OIDC/SSO integration for interactive/UI use cases (no UI exists yet — this is prep for one)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> keep the existing <code>AuthConfig</code> API-key path as a "service account" tier alongside the new user/role model, don't remove it</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> write tests (permission matrix cases, token validation, backward-compat with existing API-key-only configs)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> run project tests - must pass before next task</li>
+</ul>
+<h3 id="task-33-webhooks-event-notifications">Task 33: Webhooks &amp; event notifications<a class="headerlink" href="#task-33-webhooks-event-notifications" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>internal/webhook</code>: fire on upload, relocate, policy quarantine/deny (Task 28), scan-complete (Task 25) events to configurable subscriber URLs</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> retry with backoff, per-subscriber delivery status</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> write tests (fake HTTP subscriber, retry-on-failure, malformed subscriber config)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> run project tests - must pass before next task</li>
+</ul>
+<h3 id="task-34-reporting-dashboards-cross-repo-search">Task 34: Reporting, dashboards &amp; cross-repo search<a class="headerlink" href="#task-34-reporting-dashboards-cross-repo-search" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> extend <code>httpapi</code> (or a new <code>internal/reporting</code>) with search across all repositories by name/version/license/vulnerability status</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> exportable reports (CSV/JSON) summarizing policy violations, license breakdown, storage usage per repository</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> no web UI is in scope here — this is API-only, matching this project's current backend-service shape; a UI would be a separate, explicitly-scoped effort</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> write tests</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> run project tests - must pass before next task</li>
+</ul>
+<h3 id="task-35-backup-disaster-recovery">Task 35: Backup &amp; disaster recovery<a class="headerlink" href="#task-35-backup-disaster-recovery" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> document and script a backup procedure: today's design already makes each bucket's manifest the durable source of truth (<code>resolver.PersistManifests</code>) and the in-memory catalog a rebuildable cache, so "backup" is largely "back up the object storage buckets themselves" — verify this holds once Tasks 24/30/31 add proxy caches and replication, which introduce state that isn't just "the manifest"</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> snapshot/restore tooling for the catalog cache (mainly a startup-time optimization, since <code>Bootstrap</code> can already rebuild it from manifests + a sync pass)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> write tests (restore-from-manifest produces the same catalog state as a live sync)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> run project tests - must pass before next task</li>
+</ul>
+<h2 id="post-completion">Post-Completion<a class="headerlink" href="#post-completion" title="Permanent link">&para;</a></h2>
+<p><em>Items requiring manual intervention — no checkboxes, informational only</em></p>
+<p><strong>Manual verification:</strong>
+- Load-test the rate limiter's per-IP map under real traffic patterns and tune <code>PARPARCHIK_RATE_LIMIT_PER_SECOND</code>/<code>_BURST</code> defaults.
+- If deploying behind a reverse proxy/ingress/load balancer: the rate limiter currently keys on <code>r.RemoteAddr</code>, which will be the proxy's IP, collapsing all clients into one shared bucket (see Technical Details). Either rely on the proxy's own rate limiting in that topology, or extend <code>httpapi.clientIP</code> with a trusted-proxy-aware <code>X-Forwarded-For</code> lookup before depending on this as the sole mitigation.
+- Independent security review of the API-key auth middleware before any non-local deployment (constant-time comparison is not currently used for key matching — Go map lookup is not constant-time; low risk for a bearer-token check over TLS, but worth a second look before treating this as production-hardened auth).
+- Confirm TLS termination strategy for <code>S3_ENDPOINT</code> in any non-local deployment (this version supports <code>https://</code> endpoints; the default assumption for a bare <code>host:port</code> is still plaintext <code>http://</code>, matching current docker-compose/MinIO usage).</p>
+<p><strong>External system updates:</strong>
+- CI/CD pipeline changes to build and publish <code>golang/</code>'s Docker image alongside the existing C++/Python/Lua images.
+- Any deployment manifests (k8s, compose) that currently reference <code>nginx-lua</code> or another implementation, if this one is meant to replace rather than sit alongside them.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-arrow-up" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m16 12-4-4-4 4M12 16V8"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2026 parparchik maintainers
+    </div>
+  
+  
+    Made with
+    <a href="https://zensical.org/" target="_blank" rel="noopener">
+      Zensical
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["content.code.copy","content.code.select","navigation.footer","navigation.instant","navigation.path","navigation.sections","navigation.top","navigation.tracking","search.highlight"],"search":"../../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.e886cdf1.min.js"></script>
+      
+        <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+      
+        <script src="../../assets/mermaid-init.js"></script>
+      
+    
+  </body>
+</html>

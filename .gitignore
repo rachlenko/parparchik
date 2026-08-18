@@ -1,24 +1,3 @@
-# Build
-build/
-build-llvm/
-build-llvm-libcxx/
-out/
-cmake-build-*/
-
-# CMake generated
-CMakeCache.txt
-CMakeFiles/
-cmake_install.cmake
-Makefile.cmake
-compile_commands.json
-
-# vcpkg
-vcpkg_installed/
-
-# Compiler caches
-.cache/
-.ccache/
-
 # IDE
 .vscode/
 .idea/
@@ -30,22 +9,9 @@ vcpkg_installed/
 # Environment
 .env
 
-# Binaries and objects
-*.o
-*.obj
-*.a
-*.lib
-*.so
-*.dylib
-*.exe
-*.out
-
 # Debug
 *.dSYM/
 *.pdb
-
-# sccache
-.sccache/
 
 # Python
 __pycache__/
