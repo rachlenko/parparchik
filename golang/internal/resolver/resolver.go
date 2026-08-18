@@ -28,6 +28,7 @@ import (
 	"github.com/rachlenko/parparchik/golang/internal/catalog"
 	"github.com/rachlenko/parparchik/golang/internal/config"
 	"github.com/rachlenko/parparchik/golang/internal/objectstore"
+	"github.com/rachlenko/parparchik/golang/internal/proxycache"
 )
 
 // Resolver ties configuration, the in-memory catalog, and object storage
@@ -37,14 +38,32 @@ type Resolver struct {
 	cfg     *config.Config
 	catalog *catalog.Catalog
 	store   objectstore.Store
+	fetcher proxycache.Fetcher
 
 	mu             sync.Mutex
 	duplicateCount int
 }
 
+// Option configures optional Resolver behavior (see WithFetcher).
+type Option func(*Resolver)
+
+// WithFetcher overrides the Fetcher used to resolve config.KindProxy
+// repositories. Defaults to proxycache.NewHTTPFetcher(); tests should
+// supply a fake to avoid real network calls.
+func WithFetcher(f proxycache.Fetcher) Option {
+	return func(r *Resolver) { r.fetcher = f }
+}
+
 // New builds a Resolver.
-func New(cfg *config.Config, cat *catalog.Catalog, store objectstore.Store) *Resolver {
-	return &Resolver{cfg: cfg, catalog: cat, store: store}
+func New(cfg *config.Config, cat *catalog.Catalog, store objectstore.Store, opts ...Option) *Resolver {
+	r := &Resolver{cfg: cfg, catalog: cat, store: store}
+	for _, opt := range opts {
+		opt(r)
+	}
+	if r.fetcher == nil {
+		r.fetcher = proxycache.NewHTTPFetcher()
+	}
+	return r
 }
 
 // DuplicateCount returns how many file keys were last observed to exist in
@@ -202,7 +221,13 @@ func (r *Resolver) ResolveRoute(ctx context.Context, route string) (*catalog.Ent
 		if !strings.HasPrefix(route, prefix) {
 			continue
 		}
-		resolved, err := r.ResolveMissingFile(ctx, strings.TrimPrefix(route, prefix))
+		key := strings.TrimPrefix(route, prefix)
+
+		if bucket.Kind == config.KindProxy {
+			return r.resolveProxyRoute(ctx, bucket, key)
+		}
+
+		resolved, err := r.ResolveMissingFile(ctx, key)
 		if err != nil {
 			return nil, err
 		}
@@ -256,6 +281,71 @@ func (r *Resolver) resolveMissingFileByType(ctx context.Context, key string, pub
 		return &entry, nil
 	}
 	return nil, nil
+}
+
+// resolveProxyRoute implements the fetch-through-and-cache behavior for a
+// config.KindProxy bucket: a cache hit (the key already exists in the
+// proxy's own S3 cache bucket) is served directly; a cache miss triggers an
+// upstream fetch via r.fetcher, and a successful fetch is cached and
+// registered before being served. Returns (nil, nil) when the key genuinely
+// doesn't exist upstream either — not an error, just a 404.
+//
+// Concurrent misses for the same not-yet-cached key each independently hit
+// the upstream and re-cache (no request coalescing/singleflight) — fine for
+// occasional traffic, but a thundering-herd risk against the upstream under
+// concurrent load for a popular new key. Not addressed here since this
+// isn't mounted into a live router yet; revisit if/when it is.
+func (r *Resolver) resolveProxyRoute(ctx context.Context, bucket config.Bucket, key string) (*catalog.Entry, error) {
+	obj, err := r.store.HeadObject(ctx, bucket.Name, key)
+	if err != nil {
+		return nil, fmt.Errorf("resolver: proxy cache check %q in %q: %w", key, bucket.Name, err)
+	}
+	if obj != nil {
+		return r.registerProxyResult(ctx, bucket.Name, key, obj.Size, obj.LastModified, false)
+	}
+
+	body, contentType, ok, err := r.fetcher.Fetch(ctx, bucket.UpstreamURL, key)
+	if err != nil {
+		return nil, fmt.Errorf("resolver: proxy fetch %q from %q: %w", key, bucket.UpstreamURL, err)
+	}
+	if !ok {
+		return nil, nil
+	}
+
+	if err := r.store.PutObject(ctx, bucket.Name, key, body, contentType); err != nil {
+		return nil, fmt.Errorf("resolver: proxy cache store %q in %q: %w", key, bucket.Name, err)
+	}
+	return r.registerProxyResult(ctx, bucket.Name, key, int64(len(body)), "", true)
+}
+
+// registerProxyResult applies catalog.Register's priority check to a
+// proxy-cached object and only returns it if this exact bucket still won
+// the key.
+//
+// This uses Register, not Set, deliberately: an earlier version used Set
+// (unconditional overwrite) here, which let a proxy repository's cache
+// silently hijack a key already legitimately owned by a higher-priority
+// hosted bucket — deleting that hosted bucket's route index entry in the
+// process, since the catalog's key namespace is shared flat across every
+// bucket regardless of kind. Register's priority check prevents that; if a
+// higher-priority bucket already owns key, the freshly fetched/cached
+// object stays on disk in the proxy's cache bucket (harmless) but is not
+// surfaced through this route — the same "route/priority mismatch = 404,
+// never serve the wrong bucket's content" rule ResolveMissingFile already
+// applies elsewhere in this file.
+func (r *Resolver) registerProxyResult(ctx context.Context, bucketName, key string, size int64, lastModified string, persist bool) (*catalog.Entry, error) {
+	r.catalog.Register(key, bucketName, size, lastModified)
+	if persist {
+		if err := r.PersistManifests(ctx); err != nil {
+			slog.Error("resolver: persist manifests failed", "error", err)
+		}
+	}
+
+	entry, ok := r.catalog.Lookup(key)
+	if !ok || entry.Bucket != bucketName {
+		return nil, nil
+	}
+	return &entry, nil
 }
 
 // Exists reports whether bucket/key currently exists in storage. A

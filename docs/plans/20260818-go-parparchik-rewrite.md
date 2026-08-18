@@ -264,36 +264,45 @@ real need for that format, not pre-built as a stub.
 
 The tasks below are the future-format roadmap the user asked the
 architecture to support. Each is independent, sized as its own multi-day
-effort, and intentionally **not started** — `internal/format` ships today
-with zero stub packages for these (see Development Approach). Start
-whichever is actually needed next; there's no required order among them
-except that each should look at how `generic` mounts into `httpapi` first.
+effort. Start whichever is actually needed next; there's no required order
+among them except that each should look at how `generic` mounts into
+`httpapi` first.
+
+**2026-08-18 update — addressing-scheme slice implemented for four of
+these** (Maven, npm, PyPI, Docker): each format's path/key parser and, for
+the three that fit the bucket-prefixed model, its `format.Format`
+(`Route`/`ParseRoute`) implementation. None are mounted as HTTP
+sub-routers yet, and none generate their protocol's metadata documents
+(`maven-metadata.xml`, npm registry JSON, PEP 503/691 index pages) — that
+remaining work is called out per-task below, unchecked.
 
 ### Task 14: Maven repository format
-- [ ] `internal/format/maven`: groupId/artifactId/version path layout, `Route`/`ParseRoute`
+- [x] `internal/format/maven`: `ParseCoordinate` (groupId/artifactId/version/classifier/extension from a Maven2-layout path), `Route`/`ParseRoute`
 - [ ] `maven-metadata.xml` generation (versioning, snapshot timestamps) served from catalog state
 - [ ] mount format's HTTP sub-router in `cmd/parparchik`
-- [ ] write tests for path parsing and metadata generation
-- [ ] run project tests - must pass before next task
+- [x] write tests for path parsing (table-driven, valid + malformed cases)
+- [x] run project tests - must pass before next task
 
 ### Task 15: npm repository format
-- [ ] `internal/format/npm`: scoped/unscoped package routes, tarball URLs
+- [x] `internal/format/npm`: `ParseKey` (scoped/unscoped package + tarball-version parsing), `Route`/`ParseRoute`
 - [ ] package metadata JSON responses (`GET /<pkg>`, `GET /<pkg>/-/<pkg>-<version>.tgz`)
 - [ ] mount format's HTTP sub-router
-- [ ] write tests
-- [ ] run project tests - must pass before next task
+- [x] write tests
+- [x] run project tests - must pass before next task
 
 ### Task 16: PyPI repository format
-- [ ] `internal/format/pypi`: simple index (PEP 503) and JSON API (PEP 691) responses
+- [x] `internal/format/pypi`: `NormalizeName` (PEP 503), `ParseFilename` (sdist/wheel), `Route`/`ParseRoute`
+- [ ] simple index (PEP 503) and JSON API (PEP 691) responses
 - [ ] mount format's HTTP sub-router
-- [ ] write tests
-- [ ] run project tests - must pass before next task
+- [x] write tests
+- [x] run project tests - must pass before next task
 
 ### Task 17: Docker (OCI Distribution) repository format
-- [ ] `internal/format/docker`: OCI Distribution Spec v2 API (`/v2/...`), manifest/blob/tag handling
-- [ ] mount format's HTTP sub-router
-- [ ] write tests
-- [ ] run project tests - must pass before next task
+- [x] `internal/format/docker`: `ParseManifestPath`, `ParseBlobPath`, `IsDigest` — path-parsing primitives only. Deliberately does **not** implement `format.Format`: OCI's global `/v2/<name>/manifests|blobs/<ref>` namespace (where `<name>` itself contains slashes) doesn't fit the bucket-prefixed `Route`/`ParseRoute` contract every other format here uses. See the package doc comment.
+- [ ] OCI Distribution Spec v2 API (`/v2/...` handlers: manifest/blob GET/HEAD/PUT, tag listing)
+- [ ] mount a dedicated `/v2/` HTTP sub-router (not `format.Format`-shaped)
+- [x] write tests
+- [x] run project tests - must pass before next task
 
 ### Task 18: Helm repository format
 - [ ] `internal/format/helm`: `index.yaml` generation, chart tarball routes
@@ -363,19 +372,22 @@ and the most differentiating capability of this product class. The rest
 once there's a real multi-tenant deployment to operate.
 
 ### Task 24: Repository types — hosted, proxy, virtual/group
-- [ ] extend `config.Bucket`/introduce a `Repository` type with `Kind: hosted | proxy | virtual`
-- [ ] **proxy** repositories: fetch-through cache in front of a configured upstream URL (real npm/PyPI/Maven Central/Docker Hub/etc.), with a TTL and on-miss fetch-and-store into `objectstore`
-- [ ] **virtual/group** repositories: aggregate multiple hosted+proxy repositories under one namespace/route, with configurable resolution order (mirrors `config.Bucket`'s existing priority convention)
-- [ ] `internal/resolver` gains a "not in catalog, not in any hosted bucket, but repo is a proxy — fetch upstream" path
-- [ ] write tests (proxy cache hit/miss/expiry, virtual repo resolution order, upstream fetch failure handling)
-- [ ] run project tests - must pass before next task
+- [x] extend `config.Bucket` with `Kind: hosted | proxy` (`config.RepoKind`, `config.KindHosted`/`config.KindProxy`) — kept as an addition to `Bucket` rather than a new `Repository` type, to avoid an invasive rename across `catalog`/`resolver`/`httpapi`, all of which already reference `bucket.Name` extensively
+- [x] **proxy** repositories: fetch-through cache in front of a configured upstream URL, on-miss fetch via the new `internal/proxycache.Fetcher` (`HTTPFetcher` does a plain GET) and store into `objectstore` — configured via `PARPARCHIK_PROXY_REPOS` (`name|upstream_url|public` tokens)
+- [ ] TTL/expiry for cached proxy entries (today: cached forever until explicitly relocated/removed — fine for a first pass, but a real proxy cache should eventually re-validate or expire)
+- [ ] **virtual/group** repositories: aggregate multiple hosted+proxy repositories under one namespace/route — **not implemented in this pass**, deferred
+- [x] `internal/resolver` gains the "not cached, but repo is a proxy — fetch upstream" path (`resolver.resolveProxyRoute`, wired into `ResolveRoute`'s existing bucket-prefix-match loop)
+- [x] write tests (proxy cache hit, cache-miss-then-fetch-then-cache, upstream 404, upstream fetch error) — `internal/resolver/proxy_test.go`, `internal/proxycache/fetcher_test.go`
+- [x] run project tests - must pass before next task
+- ⚠️ Fixed during review: `resolveProxyRoute` originally used `catalog.Set` (unconditional overwrite) to register a cached/fetched object, which let a proxy repo's cache silently hijack a key already owned by a higher-priority hosted bucket — deleting that bucket's route index entry. Fixed to use `catalog.Register` (priority-checked) and only surface the entry if this exact bucket still won the key; a route/priority mismatch now returns 404 rather than the wrong bucket's content, matching `ResolveMissingFile`'s existing behavior. Regression test: `TestResolveRoute_ProxyDoesNotHijackHigherPriorityHostedKey`. Also fixed: unbounded response-body reads in `proxycache.HTTPFetcher` and `scan.OSVScanner` (now capped at 1 GiB / 8 MiB respectively).
 
 ### Task 25: Vulnerability scanning / repository firewall
-- [ ] `internal/scan`: pluggable `Scanner` interface — implementations query a vulnerability data source (e.g. OSV.dev's free API, since this project has no Sonatype OSS Index/Nexus IQ license) for a package+version and return findings (CVE IDs, severity)
-- [ ] quarantine-on-ingest hook: scan before a newly uploaded or proxy-cached artifact becomes downloadable; hold in quarantine on a policy-configured severity threshold until reviewed
-- [ ] `GET /status`-style endpoint exposing quarantined items and why
-- [ ] write tests with a fake `Scanner` (clean package, vulnerable package, scanner-unavailable fallback behavior)
-- [ ] run project tests - must pass before next task
+- [x] `internal/scan`: pluggable `Scanner` interface + `OSVScanner` querying osv.dev's free API (no Sonatype OSS Index/Nexus IQ license available) for a package+version, returning findings (ID, summary, severity)
+- [x] `Policy.Evaluate`: allow/deny decision from a `MaxSeverity` threshold against a scan `Result`
+- [ ] quarantine-on-ingest hook — **not implemented**: parparchik has no upload endpoint (objects arrive in S3 externally), so there's no single synchronous "ingest" moment to gate. The natural hook (catalog discovery of a new key during `SyncRegistry`) needs a package-ecosystem+name+version first, which means composing `scan.Scanner` with a format package's key parser (Task 14-16) — deferred to Task 28 (policy engine), which is the natural place to also add the "hold in quarantine" state machine.
+- [ ] `GET /status`-style endpoint exposing quarantined items and why (depends on the quarantine hook existing)
+- [x] write tests with a fake `Scanner`-shaped HTTP server (clean package, vulnerable package with mixed severities, unexpected-status error path) — `internal/scan/osv_test.go`, `internal/scan/policy_test.go`
+- [x] run project tests - must pass before next task
 
 ### Task 26: License compliance detection
 - [ ] `internal/license`: extract declared license from format-specific metadata (npm `package.json` `license` field, Python `METADATA`/`PKG-INFO`, Maven POM `<licenses>`, ...) — one small adapter per format package from Tasks 14–23, not a new universal parser

@@ -9,13 +9,31 @@ import (
 	"time"
 )
 
-// Bucket describes one configured storage bucket: its S3 name, the key its
-// file-registry manifest is persisted under, and whether it serves public
-// (unsigned) or private (presigned) download URLs.
+// RepoKind distinguishes how a Bucket's contents are populated.
+type RepoKind string
+
+const (
+	// KindHosted is a bucket parparchik owns: content arrives by external
+	// means (e.g. `mc cp`) and parparchik only indexes and routes it. This
+	// is the only kind that existed before proxy repository support.
+	KindHosted RepoKind = "hosted"
+
+	// KindProxy is a fetch-through cache in front of UpstreamURL: a miss in
+	// the cache bucket triggers an upstream fetch, and the result is cached
+	// for subsequent requests. See resolver.resolveProxyRoute.
+	KindProxy RepoKind = "proxy"
+)
+
+// Bucket describes one configured repository: its S3 name, the key its
+// file-registry manifest is persisted under, whether it serves public
+// (unsigned) or private (presigned) download URLs, and — for proxy
+// repositories — the upstream it fetches through.
 type Bucket struct {
 	Name        string
 	ManifestKey string
 	Public      bool
+	Kind        RepoKind
+	UpstreamURL string // only set when Kind == KindProxy
 }
 
 // Config holds all runtime configuration for the service.
@@ -58,10 +76,12 @@ func env(name, def string) string {
 	return def
 }
 
-// Load reads configuration from the environment. Buckets can be configured
-// either as a single comma-separated PARPARCHIK_BUCKETS list of
+// Load reads configuration from the environment. Hosted buckets can be
+// configured either as a single comma-separated PARPARCHIK_BUCKETS list of
 // "name:manifest_key:public" tokens, or as the legacy pair of
-// PARPARCHIK_PUBLIC_BUCKET / PARPARCHIK_PRIVATE_BUCKET variables.
+// PARPARCHIK_PUBLIC_BUCKET / PARPARCHIK_PRIVATE_BUCKET variables. Proxy
+// repositories are configured separately via PARPARCHIK_PROXY_REPOS (see
+// parseProxyRepos) and appended after the hosted buckets.
 func Load() (*Config, error) {
 	port, err := strconv.Atoi(env("PARPARCHIK_PORT", "8080"))
 	if err != nil {
@@ -82,7 +102,7 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	cfg.Buckets = buckets
+	cfg.Buckets = append(buckets, parseProxyRepos(env("PARPARCHIK_PROXY_REPOS", ""))...)
 
 	if raw := env("PARPARCHIK_API_KEYS", ""); raw != "" {
 		for _, k := range strings.Split(raw, ",") {
@@ -125,8 +145,8 @@ func loadBuckets() ([]Bucket, error) {
 	}
 	manifest := env("PARPARCHIK_REGISTRY_MANIFEST_KEY", defaultManifestKey)
 	return []Bucket{
-		{Name: pub, ManifestKey: manifest, Public: true},
-		{Name: priv, ManifestKey: manifest, Public: false},
+		{Name: pub, ManifestKey: manifest, Public: true, Kind: KindHosted},
+		{Name: priv, ManifestKey: manifest, Public: false, Kind: KindHosted},
 	}, nil
 }
 
@@ -144,9 +164,41 @@ func parseBucketsList(raw string) []Bucket {
 		if parts[0] == "" {
 			continue
 		}
-		b := Bucket{Name: parts[0], ManifestKey: defaultManifestKey}
+		b := Bucket{Name: parts[0], ManifestKey: defaultManifestKey, Kind: KindHosted}
 		if len(parts) > 1 && parts[1] != "" {
 			b.ManifestKey = parts[1]
+		}
+		if len(parts) > 2 && parts[2] == "public" {
+			b.Public = true
+		}
+		buckets = append(buckets, b)
+	}
+	return buckets
+}
+
+// parseProxyRepos parses PARPARCHIK_PROXY_REPOS: a comma-separated list of
+// "name|upstream_url|public" tokens (pipe-separated, since upstream URLs
+// already contain colons from their scheme). Each proxy repo gets its own
+// S3 cache bucket named after the repo; ManifestKey defaults the same as
+// hosted buckets. Proxy repos are appended after hosted buckets, so they
+// rank lower priority by default in any code that walks Config.Buckets in
+// order (e.g. Config.BucketPriority).
+func parseProxyRepos(raw string) []Bucket {
+	var buckets []Bucket
+	for _, token := range strings.Split(raw, ",") {
+		token = strings.TrimSpace(token)
+		if token == "" {
+			continue
+		}
+		parts := strings.Split(token, "|")
+		if len(parts) < 2 || parts[0] == "" || parts[1] == "" {
+			continue
+		}
+		b := Bucket{
+			Name:        parts[0],
+			ManifestKey: defaultManifestKey,
+			Kind:        KindProxy,
+			UpstreamURL: parts[1],
 		}
 		if len(parts) > 2 && parts[2] == "public" {
 			b.Public = true

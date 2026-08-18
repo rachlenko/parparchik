@@ -30,8 +30,8 @@ func clearParparchikEnv(t *testing.T) {
 		"PARPARCHIK_BUCKETS", "PARPARCHIK_PUBLIC_BUCKET", "PARPARCHIK_PRIVATE_BUCKET",
 		"PARPARCHIK_REGISTRY_MANIFEST_KEY", "PARPARCHIK_HOST", "PARPARCHIK_PORT",
 		"PARPARCHIK_API_KEYS", "PARPARCHIK_RATE_LIMIT_PER_SECOND", "PARPARCHIK_RATE_LIMIT_BURST",
-		"PARPARCHIK_SYNC_INTERVAL", "S3_ENDPOINT", "S3_EXTERNAL_ENDPOINT", "AWS_REGION",
-		"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY",
+		"PARPARCHIK_SYNC_INTERVAL", "PARPARCHIK_PROXY_REPOS", "S3_ENDPOINT", "S3_EXTERNAL_ENDPOINT",
+		"AWS_REGION", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY",
 	} {
 		prev, had := os.LookupEnv(k)
 		os.Unsetenv(k)
@@ -98,9 +98,9 @@ func TestLoad_BucketsList(t *testing.T) {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
 	want := []Bucket{
-		{Name: "alpha", ManifestKey: "alpha-manifest.json", Public: true},
-		{Name: "beta", ManifestKey: defaultManifestKey, Public: false},
-		{Name: "gamma", ManifestKey: defaultManifestKey, Public: false},
+		{Name: "alpha", ManifestKey: "alpha-manifest.json", Public: true, Kind: KindHosted},
+		{Name: "beta", ManifestKey: defaultManifestKey, Public: false, Kind: KindHosted},
+		{Name: "gamma", ManifestKey: defaultManifestKey, Public: false, Kind: KindHosted},
 	}
 	if len(cfg.Buckets) != len(want) {
 		t.Fatalf("len(Buckets) = %d, want %d (%+v)", len(cfg.Buckets), len(want), cfg.Buckets)
@@ -230,5 +230,71 @@ func TestConfig_BucketPriorityAndType(t *testing.T) {
 	}
 	if got := cfg.BucketType("unknown"); got != "private" {
 		t.Errorf("BucketType(unknown) = %q, want private (unknown buckets default to private)", got)
+	}
+}
+
+func TestLoad_ProxyRepos(t *testing.T) {
+	// Arrange
+	clearParparchikEnv(t)
+	withEnv(t, map[string]string{
+		"PARPARCHIK_PUBLIC_BUCKET":  "pub",
+		"PARPARCHIK_PRIVATE_BUCKET": "priv",
+		"PARPARCHIK_PROXY_REPOS":    "npm-cache|https://registry.npmjs.org|public,internal-cache|https://internal.example/repo",
+	})
+
+	// Act
+	cfg, err := Load()
+
+	// Assert
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if len(cfg.Buckets) != 4 {
+		t.Fatalf("len(Buckets) = %d, want 4 (2 hosted + 2 proxy), got %+v", len(cfg.Buckets), cfg.Buckets)
+	}
+	want := []Bucket{
+		{Name: "npm-cache", ManifestKey: defaultManifestKey, Public: true, Kind: KindProxy, UpstreamURL: "https://registry.npmjs.org"},
+		{Name: "internal-cache", ManifestKey: defaultManifestKey, Public: false, Kind: KindProxy, UpstreamURL: "https://internal.example/repo"},
+	}
+	for i, b := range want {
+		got := cfg.Buckets[2+i]
+		if got != b {
+			t.Errorf("Buckets[%d] = %+v, want %+v", 2+i, got, b)
+		}
+	}
+	// Proxy repos rank lower priority than hosted buckets by default.
+	if cfg.BucketPriority("pub") >= cfg.BucketPriority("npm-cache") {
+		t.Errorf("expected hosted bucket to outrank proxy repo: pub=%d npm-cache=%d",
+			cfg.BucketPriority("pub"), cfg.BucketPriority("npm-cache"))
+	}
+}
+
+func TestLoad_ProxyReposMalformedTokensIgnored(t *testing.T) {
+	// Arrange
+	clearParparchikEnv(t)
+	withEnv(t, map[string]string{
+		"PARPARCHIK_PUBLIC_BUCKET":  "pub",
+		"PARPARCHIK_PRIVATE_BUCKET": "priv",
+		"PARPARCHIK_PROXY_REPOS":    "missing-url,|https://example.com,valid|https://example.com",
+	})
+
+	// Act
+	cfg, err := Load()
+
+	// Assert
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	proxyCount := 0
+	for _, b := range cfg.Buckets {
+		if b.Kind == KindProxy {
+			proxyCount++
+			if b.Name != "valid" {
+				t.Errorf("unexpected proxy repo registered from malformed token: %+v", b)
+			}
+		}
+	}
+	if proxyCount != 1 {
+		t.Errorf("proxyCount = %d, want 1 (only the well-formed token)", proxyCount)
 	}
 }
