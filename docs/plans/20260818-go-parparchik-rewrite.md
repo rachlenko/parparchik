@@ -17,6 +17,12 @@ The immediate driver was a code review and a security review of
 (not just style issues) worth fixing rather than porting as-is — see
 Technical Details below.
 
+Tasks 14–23 cover per-format support; Tasks 24–35 cover the Nexus/
+Artifactory-class capabilities (proxy/virtual repositories, vulnerability
+scanning, policy engine, HA, RBAC, and more) identified in the "Feature Gap
+Analysis" section near the end of this document, added after reviewing a
+Sonatype Nexus-vs-Artifactory feature comparison.
+
 ## Context
 
 - Source of truth for current behavior: `nginx-lua/lua/{config,aws_sig,s3,registry,metrics,handlers}.lua`, `nginx-lua/nginx.conf`, `nginx-lua/README.md`.
@@ -323,6 +329,120 @@ except that each should look at how `generic` mounts into `httpapi` first.
 - [ ] `internal/format/mlmodel`: define a layout (e.g. MLflow-model-registry-compatible or a simple versioned-artifact scheme) — needs a design decision before implementation, not just a port
 - [ ] mount format's HTTP sub-router
 - [ ] write tests
+- [ ] run project tests - must pass before next task
+
+---
+
+## Feature Gap Analysis: Nexus vs Artifactory (2026-08-18)
+
+Source: https://www.sonatype.com/compare/sonatype-nexus-versus-jfrog-artifactory
+— a Sonatype-authored vendor comparison, so its head-to-head claims
+("Nexus is 80% more accurate", "Artifactory has no depth of SCA") are
+marketing and not treated as engineering requirements here. What's useful
+is the *feature taxonomy* both products compete on — every capability
+listed below is something a real Nexus/Artifactory deployment is expected
+to have, regardless of which vendor does it better. Tasks 14–23 above only
+cover repository *formats*; the tasks in this section cover the
+capabilities that make a multi-format repository actually operate like
+Nexus/Artifactory rather than just serve files in more shapes. None of
+these are started; `internal/` has no packages for them yet, by the same
+no-stub-code policy as Tasks 14–23.
+
+### Priority note
+
+Task 24 (repository types: hosted/proxy/virtual) should come **before**
+most of Tasks 14–23, not after — it's orthogonal to format and multiplies
+the value of every format package that exists or gets added: a `generic`
+or `maven` format is far more useful as a caching *proxy* in front of the
+real npm/Maven Central/PyPI than as a hosted-only store, which is the
+single most-used feature of both Nexus and Artifactory in practice. Task
+25 (vulnerability scanning / firewall) and Task 28 (policy engine) are the
+next-highest-value pair, since they're the comparison page's entire focus
+and the most differentiating capability of this product class. The rest
+(31–35) are operational/enterprise maturity items — valuable, but only
+once there's a real multi-tenant deployment to operate.
+
+### Task 24: Repository types — hosted, proxy, virtual/group
+- [ ] extend `config.Bucket`/introduce a `Repository` type with `Kind: hosted | proxy | virtual`
+- [ ] **proxy** repositories: fetch-through cache in front of a configured upstream URL (real npm/PyPI/Maven Central/Docker Hub/etc.), with a TTL and on-miss fetch-and-store into `objectstore`
+- [ ] **virtual/group** repositories: aggregate multiple hosted+proxy repositories under one namespace/route, with configurable resolution order (mirrors `config.Bucket`'s existing priority convention)
+- [ ] `internal/resolver` gains a "not in catalog, not in any hosted bucket, but repo is a proxy — fetch upstream" path
+- [ ] write tests (proxy cache hit/miss/expiry, virtual repo resolution order, upstream fetch failure handling)
+- [ ] run project tests - must pass before next task
+
+### Task 25: Vulnerability scanning / repository firewall
+- [ ] `internal/scan`: pluggable `Scanner` interface — implementations query a vulnerability data source (e.g. OSV.dev's free API, since this project has no Sonatype OSS Index/Nexus IQ license) for a package+version and return findings (CVE IDs, severity)
+- [ ] quarantine-on-ingest hook: scan before a newly uploaded or proxy-cached artifact becomes downloadable; hold in quarantine on a policy-configured severity threshold until reviewed
+- [ ] `GET /status`-style endpoint exposing quarantined items and why
+- [ ] write tests with a fake `Scanner` (clean package, vulnerable package, scanner-unavailable fallback behavior)
+- [ ] run project tests - must pass before next task
+
+### Task 26: License compliance detection
+- [ ] `internal/license`: extract declared license from format-specific metadata (npm `package.json` `license` field, Python `METADATA`/`PKG-INFO`, Maven POM `<licenses>`, ...) — one small adapter per format package from Tasks 14–23, not a new universal parser
+- [ ] normalize to SPDX identifiers where possible
+- [ ] expose via catalog entry metadata + an optional policy check (Task 28) blocking disallowed licenses
+- [ ] write tests per adapter (known-license, missing-license, malformed-metadata cases)
+- [ ] run project tests - must pass before next task
+
+### Task 27: SBOM generation & ingestion
+- [ ] `internal/sbom`: generate a CycloneDX (or SPDX) SBOM document per repository/artifact from catalog + license (Task 26) + scan (Task 25) data
+- [ ] accept externally-generated SBOMs on upload, store alongside the artifact's manifest entry
+- [ ] `GET /sbom?...` endpoint
+- [ ] write tests (generation from known catalog state, ingestion round-trip)
+- [ ] run project tests - must pass before next task
+
+### Task 28: Policy engine
+- [ ] `internal/policy`: rule evaluation over scan (Task 25) + license (Task 26) + artifact metadata — e.g. "block CVSS ≥ 7", "block GPL-family licenses", "block packages published < 4 days ago" (a real malware-mitigation technique: most malicious packages are pulled within days)
+- [ ] wire into the upload path and the proxy fetch-through path (Task 24) as an allow/quarantine/deny gate
+- [ ] waivers: an explicit, audited override for a specific package+version
+- [ ] audit log of policy decisions
+- [ ] write tests (allow, block, waiver override, malformed-rule handling)
+- [ ] run project tests - must pass before next task
+
+### Task 29: Cleanup & retention policies
+- [ ] `internal/cleanup`: per-repository rules (max age, max version count, max total size) for pruning old artifacts — mainly relevant to proxy caches (Task 24) and snapshot-style hosted repos
+- [ ] scheduled GC goroutine (reuses the periodic-ticker pattern already in `cmd/parparchik`)
+- [ ] dry-run mode reporting what would be deleted before actually deleting
+- [ ] write tests
+- [ ] run project tests - must pass before next task
+
+### Task 30: Replication
+- [ ] `internal/replication`: push or pull artifact/manifest sync between two parparchik instances (for edge caching or DR), building on the existing manifest-as-source-of-truth design in `resolver.PersistManifests`
+- [ ] conflict handling reuses `catalog`'s existing priority/`Set` semantics — no new conflict model needed
+- [ ] write tests
+- [ ] run project tests - must pass before next task
+
+### Task 31: High availability & clustering — needs a design doc first
+- [ ] **Architectural blocker, not a drop-in task**: `internal/catalog.Catalog` is an in-process map today. Running more than one instance behind a load balancer means two processes each have their own, divergent view of the registry — `Bootstrap`'s reconcile-from-storage step is the only thing keeping them roughly consistent, on the sync interval, not in real time.
+- [ ] design doc: externalize catalog state to a shared backend (e.g. Redis, Postgres, or etcd) behind the *same* `Catalog` method signatures, so `resolver`/`httpapi` don't change — this is exactly what the `catalog` package's small, already-abstracted API is for
+- [ ] evaluate whether `objectstore`-only reconciliation (current design) is actually sufficient for a first HA pass before building a distributed catalog — it might be, given manifests are already the durable source of truth
+- [ ] write tests once a design is chosen
+- [ ] run project tests - must pass before next task
+
+### Task 32: Access control — RBAC and SSO
+- [ ] `internal/authz`: replace the flat `PARPARCHIK_API_KEYS` list (Task 6) with per-repository and per-path permissions, roles/groups
+- [ ] OIDC/SSO integration for interactive/UI use cases (no UI exists yet — this is prep for one)
+- [ ] keep the existing `AuthConfig` API-key path as a "service account" tier alongside the new user/role model, don't remove it
+- [ ] write tests (permission matrix cases, token validation, backward-compat with existing API-key-only configs)
+- [ ] run project tests - must pass before next task
+
+### Task 33: Webhooks & event notifications
+- [ ] `internal/webhook`: fire on upload, relocate, policy quarantine/deny (Task 28), scan-complete (Task 25) events to configurable subscriber URLs
+- [ ] retry with backoff, per-subscriber delivery status
+- [ ] write tests (fake HTTP subscriber, retry-on-failure, malformed subscriber config)
+- [ ] run project tests - must pass before next task
+
+### Task 34: Reporting, dashboards & cross-repo search
+- [ ] extend `httpapi` (or a new `internal/reporting`) with search across all repositories by name/version/license/vulnerability status
+- [ ] exportable reports (CSV/JSON) summarizing policy violations, license breakdown, storage usage per repository
+- [ ] no web UI is in scope here — this is API-only, matching this project's current backend-service shape; a UI would be a separate, explicitly-scoped effort
+- [ ] write tests
+- [ ] run project tests - must pass before next task
+
+### Task 35: Backup & disaster recovery
+- [ ] document and script a backup procedure: today's design already makes each bucket's manifest the durable source of truth (`resolver.PersistManifests`) and the in-memory catalog a rebuildable cache, so "backup" is largely "back up the object storage buckets themselves" — verify this holds once Tasks 24/30/31 add proxy caches and replication, which introduce state that isn't just "the manifest"
+- [ ] snapshot/restore tooling for the catalog cache (mainly a startup-time optimization, since `Bootstrap` can already rebuild it from manifests + a sync pass)
+- [ ] write tests (restore-from-manifest produces the same catalog state as a live sync)
 - [ ] run project tests - must pass before next task
 
 ## Post-Completion
