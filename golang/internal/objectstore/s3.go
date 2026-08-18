@@ -27,7 +27,6 @@ type S3Store struct {
 	presign          *s3.PresignClient
 	region           string
 	externalEndpoint string
-	usingCustomEP    bool
 }
 
 // NewS3Store builds an S3Store from parparchik configuration. When
@@ -68,12 +67,30 @@ func NewS3Store(ctx context.Context, cfg *config.Config) (*S3Store, error) {
 		}
 	})
 
+	// Presigned URLs must be signed against — and therefore must use —
+	// whatever host the *client that follows the redirect* will actually
+	// connect to, not necessarily the same host this process uses to talk
+	// to storage directly. In the common docker-compose shape,
+	// S3_ENDPOINT=minio:9000 (only resolvable inside the Docker network)
+	// while S3_EXTERNAL_ENDPOINT=localhost:9000 (what a client outside the
+	// network must use); reusing the internal client to presign would
+	// produce a URL an external client can't even resolve. When no custom
+	// endpoint is configured at all (real AWS S3), presigning against the
+	// default client is correct as-is — there's nothing to redirect away
+	// from.
+	presignClient := client
+	if cfg.S3Endpoint != "" {
+		presignClient = s3.NewFromConfig(awsCfg, func(o *s3.Options) {
+			o.BaseEndpoint = aws.String(externalURL)
+			o.UsePathStyle = true
+		})
+	}
+
 	return &S3Store{
 		client:           client,
-		presign:          s3.NewPresignClient(client),
+		presign:          s3.NewPresignClient(presignClient),
 		region:           cfg.AWSRegion,
 		externalEndpoint: externalURL,
-		usingCustomEP:    cfg.S3Endpoint != "",
 	}, nil
 }
 
