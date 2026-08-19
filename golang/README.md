@@ -72,6 +72,11 @@ golang/
 │   │   ├── maven/          Maven2 coordinate parsing + Route/ParseRoute (addressing only — not mounted)
 │   │   ├── npm/             npm package/tarball key parsing + Route/ParseRoute (addressing only — not mounted)
 │   │   ├── pypi/            PEP 503 name normalization + distribution filename parsing (addressing only — not mounted)
+│   │   ├── helm/             Helm chart filename parsing + Route/ParseRoute (addressing only — not mounted)
+│   │   ├── nuget/            NuGet package filename parsing + Route/ParseRoute (addressing only — not mounted)
+│   │   ├── debian/           .deb filename + APT pool-path parsing + Route/ParseRoute (addressing only — not mounted)
+│   │   ├── rpm/              RPM filename parsing + Route/ParseRoute (addressing only — not mounted)
+│   │   ├── terraform/        Terraform Registry Protocol path parsing (primitives only, no format.Format — see package doc)
 │   │   └── docker/          OCI Distribution manifest/blob path parsing (primitives only, no format.Format — see package doc)
 │   ├── scan/               vulnerability scanning: Scanner interface, OSV.dev-backed implementation, Policy (not yet wired to an ingest hook)
 │   ├── resolver/           route resolution, reconciliation, relocate, proxy fetch-through — the core business logic
@@ -101,13 +106,16 @@ Debian's `Packages`/`Release` files, RPM's `repodata`), built on top of the
 existing `catalog.Catalog` and `objectstore.Store` — not by replacing them.
 
 `generic` is the only format actually mounted and serving traffic today.
-`maven`, `npm`, and `pypi` implement real, tested path/key parsing and the
-`Format` interface, but aren't mounted as HTTP sub-routers yet, and don't
-generate their protocol's metadata documents — see `docs/plans/` for the
-per-format remaining-work breakdown. `docker` intentionally does *not*
-implement `Format`: OCI's `/v2/<name>/manifests|blobs/<ref>` namespace
-isn't bucket-prefixed the way `Route`/`ParseRoute` assumes, so it only
-exposes path-parsing primitives for a future dedicated sub-router.
+`maven`, `npm`, `pypi`, `helm`, `nuget`, and `debian`/`rpm` implement real,
+tested path/key parsing and the `Format` interface, but aren't mounted as
+HTTP sub-routers yet, and don't generate their protocol's metadata
+documents — see `docs/plans/` for the per-format remaining-work breakdown.
+`docker` and `terraform` intentionally do *not* implement `Format`: OCI's
+`/v2/<name>/manifests|blobs/<ref>` namespace and the Terraform Registry
+Protocol's `/v1/providers/...`/`/v1/modules/...` paths are both global
+namespaces, not bucket-prefixed the way `Route`/`ParseRoute` assumes, so
+each only exposes path-parsing primitives for a future dedicated
+sub-router.
 
 ## Configuration
 

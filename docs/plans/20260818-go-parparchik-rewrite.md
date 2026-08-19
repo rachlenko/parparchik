@@ -260,8 +260,8 @@ real need for that format, not pre-built as a stub.
 - [x] run project linter — added `golangci-lint` (`golang/.golangci.yml`, `make go-lint`); fixed all 15 findings it surfaced on first run (unchecked `errcheck` returns — mostly `defer resp.Body.Close()` and test-handler writes — plus one dead method, `fakeStore.remove`, deleted per no-dead-code convention)
 
 ### Task 13: Documentation
-- [ ] add `golang/` as a fourth implementation option in the repo root `README.md`'s comparison table (alongside C++/Python/Lua)
-- [ ] update `golang/README.md` if scope changed during implementation
+- [x] ~~add `golang/` as a fourth implementation option in the repo root `README.md`'s comparison table (alongside C++/Python/Lua)~~ — superseded: C++ and Nginx+Lua were deleted entirely (a later, larger request: "clean lua based and all related to c++ code and update the master with clean and solid go language solution"), so there's no comparison table left to add a fourth row to. Root `README.md` now has a `## Go implementation (recommended)` section presenting it as the primary implementation (Python remains as a reference server, mentioned there), which accomplishes this task's actual intent more directly than the originally-planned row addition would have.
+- [x] update `golang/README.md` if scope changed during implementation — kept current incrementally through Tasks 24/14-17/25 (proxy repositories section, package layout, format packages, vulnerability scanning section, `PARPARCHIK_PROXY_REPOS` config entry)
 
 ---
 
@@ -308,34 +308,39 @@ remaining work is called out per-task below, unchecked.
 - [x] run project tests - must pass before next task
 
 ### Task 18: Helm repository format
-- [ ] `internal/format/helm`: `index.yaml` generation, chart tarball routes
+- [x] `internal/format/helm`: `ParseChartFilename` (`<name>-<version>.tgz`, version boundary = first "-"-segment starting with a digit, same heuristic as maven/npm), `Route`/`ParseRoute`
+- [ ] `index.yaml` generation
 - [ ] mount format's HTTP sub-router
-- [ ] write tests
-- [ ] run project tests - must pass before next task
+- [x] write tests
+- [x] run project tests - must pass before next task
 
 ### Task 19: NuGet repository format
-- [ ] `internal/format/nuget`: NuGet V3 API (service index, package base address, registration)
+- [x] `internal/format/nuget`: `ParsePackageFilename` (`<id>.<version>.nupkg`, split on "." at the first digit-leading segment) — documented known limitation: an id segment starting with a digit (e.g. "Company.2FA.Library") misparses, `Route`/`ParseRoute`
+- [ ] NuGet V3 API (service index, package base address, registration)
 - [ ] mount format's HTTP sub-router
-- [ ] write tests
-- [ ] run project tests - must pass before next task
+- [x] write tests
+- [x] run project tests - must pass before next task
 
 ### Task 20: Debian (APT) repository format
-- [ ] `internal/format/debian`: `Release`/`Packages`(.gz) index generation, pool layout
+- [x] `internal/format/debian`: `ParsePackageFilename` (`<name>_<version>_<arch>.deb`, unambiguous — Debian's own convention already delimits on "_"), `PoolPath` (APT pool layout, "lib<x>" 4-char bucketing), `Route`/`ParseRoute`
+- [ ] `Release`/`Packages`(.gz) index generation
 - [ ] mount format's HTTP sub-router
-- [ ] write tests
-- [ ] run project tests - must pass before next task
+- [x] write tests
+- [x] run project tests - must pass before next task
 
 ### Task 21: RPM (yum) repository format
-- [ ] `internal/format/rpm`: `repodata` (repomd.xml, primary.xml.gz) generation
+- [x] `internal/format/rpm`: `ParsePackageFilename` (`<name>-<version>-<release>.<arch>.rpm`), validated against a `knownArchitectures` allowlist — a go-reviewer pass on the first version (which took the last "." as the arch separator unconditionally) confirmed it would misparse a filename missing its architecture suffix, mistaking the release field's own embedded dot for the arch separator; the allowlist check closes that gap (residual limitation: a real-but-unlisted architecture, or a release tag colliding with a listed one, still misparses — a fixed allowlist, not a full RPM header parse), `Route`/`ParseRoute`
+- [ ] `repodata` (repomd.xml, primary.xml.gz) generation
 - [ ] mount format's HTTP sub-router
-- [ ] write tests
-- [ ] run project tests - must pass before next task
+- [x] write tests
+- [x] run project tests - must pass before next task
 
 ### Task 22: Terraform provider/module registry format
-- [ ] `internal/format/terraform`: Terraform Registry Protocol (provider + module discovery/download endpoints)
-- [ ] mount format's HTTP sub-router
-- [ ] write tests
-- [ ] run project tests - must pass before next task
+- [x] `internal/format/terraform`: `ParseProviderVersionsPath`, `ParseProviderDownloadPath`, `ParseModuleVersionsPath`, `ParseModuleDownloadPath` against the real Terraform Registry Protocol. Deliberately does **not** implement `format.Format` — same reasoning as `docker`: `/v1/providers/...` and `/v1/modules/...` are a global namespace, not bucket-prefixed.
+- [ ] the protocol's actual JSON response bodies (version lists, download metadata with checksums/signing keys)
+- [ ] mount a dedicated `/v1/` HTTP sub-router (not `format.Format`-shaped)
+- [x] write tests
+- [x] run project tests - must pass before next task
 
 ### Task 23: ML model repository format
 - [ ] `internal/format/mlmodel`: define a layout (e.g. MLflow-model-registry-compatible or a simple versioned-artifact scheme) — needs a design decision before implementation, not just a port
