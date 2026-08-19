@@ -81,6 +81,7 @@ golang/
 │   ├── scan/               vulnerability scanning: Scanner interface, OSV.dev-backed implementation, Policy (not yet wired to an ingest hook)
 │   ├── license/            license detection: npm/Python/Maven metadata adapters, SPDX normalization (not yet wired to catalog entries or a policy check)
 │   ├── sbom/               CycloneDX SBOM generation + ingestion, combining catalog/license/scan data (not yet wired to an HTTP endpoint or catalog storage)
+│   ├── policy/             allow/quarantine/deny policy engine over scan+license+age, with waivers and an audit log (not yet wired to a request path — see below)
 │   ├── resolver/           route resolution, reconciliation, relocate, proxy fetch-through + TTL, virtual repo aggregation — the core business logic
 │   ├── httpapi/            HTTP handlers, routing, auth + rate-limit middleware, key validation
 │   └── metricsapi/         Prometheus metrics (client_golang)
@@ -198,6 +199,22 @@ wired into any request path yet**. parparchik has no upload endpoint
 "ingest" moment to gate; wiring this into an actual quarantine hook needs
 composing `scan.Scanner` with a format package's key parser first (to know
 a key's ecosystem/name/version) — see `docs/plans/` Task 25/28.
+
+## Policy engine
+
+`internal/policy` composes `scan.Result`, `license.Result`, and artifact
+publish-age into a three-tier `Decision` (Allow/Quarantine/Deny) via a
+`Ruleset`, with an explicit, audited `Waiver` override for a specific
+package+version (or every version of a package) and an in-memory
+`AuditLog` recording every decision made. It is a standalone, tested
+package — **not wired into any request path yet**: there's still no
+upload endpoint, and the proxy fetch-through path (Task 24) doesn't yet
+know an arbitrary key's ecosystem/name/version since no format package is
+mounted as an HTTP sub-router. Note that `Ruleset{}`'s zero value is
+*not* permissive for vulnerabilities — `MaxSeverity`/`QuarantineSeverity`
+both default to `scan.SeverityUnknown`, so an unconfigured `Ruleset`
+denies any artifact with a known finding above that; a real deployment
+must set `MaxSeverity` explicitly.
 
 ## Development
 
