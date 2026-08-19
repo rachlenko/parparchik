@@ -442,10 +442,10 @@ once there's a real multi-tenant deployment to operate.
 
 ### Task 31: High availability & clustering — needs a design doc first
 - [ ] **Architectural blocker, not a drop-in task**: `internal/catalog.Catalog` is an in-process map today. Running more than one instance behind a load balancer means two processes each have their own, divergent view of the registry — `Bootstrap`'s reconcile-from-storage step is the only thing keeping them roughly consistent, on the sync interval, not in real time.
-- [ ] design doc: externalize catalog state to a shared backend (e.g. Redis, Postgres, or etcd) behind the *same* `Catalog` method signatures, so `resolver`/`httpapi` don't change — this is exactly what the `catalog` package's small, already-abstracted API is for
-- [ ] evaluate whether `objectstore`-only reconciliation (current design) is actually sufficient for a first HA pass before building a distributed catalog — it might be, given manifests are already the durable source of truth
-- [ ] write tests once a design is chosen
-- [ ] run project tests - must pass before next task
+- [x] design doc: [`20260819-go-ha-clustering-design.md`](./20260819-go-ha-clustering-design.md) — externalizing catalog state to a shared backend (e.g. Redis, Postgres, or etcd) behind the *same* `Catalog` method signatures, so `resolver`/`httpapi` don't change (confirmed achievable: both hold a concrete `*catalog.Catalog` field, not an interface, so Go's structural typing means only `internal/catalog`'s internals need to change); evaluates whether `objectstore`-only reconciliation (current design) is sufficient for a first pass; recommends Redis (atomic Lua-script compare-and-set matches `Register`'s priority-check-then-write semantics directly) over Postgres/etcd if/when a distributed catalog is actually greenlit; phasing recommendation is Option A (current design, documented write-path staleness/race, no code change) now, Option B only once a concrete active/active-writes requirement appears
+- [ ] implementation once the design doc's Option B is greenlit by a concrete requirement — **not started**, per the design doc's own phasing recommendation and the user's explicit choice (design doc only, no code, for this pass)
+- [ ] write tests once a design is chosen and implementation begins
+- [x] run project tests - must pass before next task (no code changed by this task; full suite still verified clean)
 
 ### Task 32: Access control — RBAC and SSO
 - [ ] `internal/authz`: replace the flat `PARPARCHIK_API_KEYS` list (Task 6) with per-repository and per-path permissions, roles/groups
