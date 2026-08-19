@@ -87,6 +87,7 @@ golang/
 │   ├── authz/              per-repository, per-action RBAC primitives (Authorizer, Role, Grant, ServiceAccounts bridge for the existing API-key auth); not yet wired into httpapi's live auth middleware, no OIDC/SSO
 │   ├── webhook/            event notifications (Registry + Dispatcher) with retry/backoff and per-attempt delivery status; not yet wired to any live event source
 │   ├── reporting/          cross-repo search + CSV/JSON reports (policy violations, license breakdown, storage usage) over catalog/license/scan/policy Records; not wired to an HTTP endpoint — no enriched Record data source exists yet
+│   ├── snapshot/           catalog Capture/Restore (startup-time cache warm-start, not a durability mechanism — see docs/backup-and-disaster-recovery.md)
 │   ├── resolver/           route resolution, reconciliation, relocate, proxy fetch-through + TTL, virtual repo aggregation — the core business logic
 │   ├── httpapi/            HTTP handlers, routing, auth + rate-limit middleware, key validation
 │   └── metricsapi/         Prometheus metrics (client_golang)
@@ -300,6 +301,26 @@ real source of enriched `[]Record` data yet, since nothing in this
 codebase attaches license/scan/policy results to a catalog entry anywhere
 today. A `Record.PolicyVerdict == nil` ("never evaluated") is treated as
 absent data, not an implicit allow.
+
+## Backup, disaster recovery & catalog snapshots
+
+Backing up parparchik is backing up the S3/MinIO buckets — each bucket's
+`.parparchik/files.json` manifest is already the durable source of truth
+(`resolver.PersistManifests`), and the in-memory catalog is a rebuildable
+cache of it. See `../docs/backup-and-disaster-recovery.md` for the full
+writeup, including an audit of every feature added this session for state
+that might not be covered by "just back up the buckets" (one real gap
+found: `internal/policy.AuditLog` has no persistence yet — relevant once
+Task 28 is wired into a live path, not today). `../scripts/backup.sh` /
+`../scripts/restore.sh` mirror bucket contents to/from a local directory
+via the MinIO client (also `make backup` / `make restore` from the repo
+root).
+
+`internal/snapshot` (`Capture`/`Restore`) is a separate, smaller thing: a
+startup-time optimization that lets a new process warm-start its catalog
+from a prior instance's captured state instead of waiting on
+`Bootstrap`'s S3 round-trips — not a disaster-recovery mechanism, and
+using it makes no difference to what needs backing up.
 
 ## Development
 

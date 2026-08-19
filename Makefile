@@ -58,6 +58,14 @@ go-test-e2e: go-docker-up ## Start the Go stack and run the e2e test suite again
 	done
 	MC=$(MC) ./test/e2e_test.sh
 
+.PHONY: backup
+backup: ## Back up buckets: BACKUP_BUCKETS="a b c" BACKUP_DEST=/path make backup
+	MC=$(MC) ./scripts/backup.sh
+
+.PHONY: restore
+restore: ## Restore buckets: BACKUP_BUCKETS="a b c" BACKUP_SRC=/path make restore
+	MC=$(MC) ./scripts/restore.sh
+
 # ──────────────────────────────────────────────
 #  Docker (Python reference server)
 # ──────────────────────────────────────────────
