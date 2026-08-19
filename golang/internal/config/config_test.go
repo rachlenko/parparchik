@@ -2,7 +2,9 @@ package config
 
 import (
 	"os"
+	"reflect"
 	"testing"
+	"time"
 )
 
 // withEnv sets env vars for the duration of the test and restores whatever
@@ -34,8 +36,8 @@ func clearParparchikEnv(t *testing.T) {
 		"PARPARCHIK_BUCKETS", "PARPARCHIK_PUBLIC_BUCKET", "PARPARCHIK_PRIVATE_BUCKET",
 		"PARPARCHIK_REGISTRY_MANIFEST_KEY", "PARPARCHIK_HOST", "PARPARCHIK_PORT",
 		"PARPARCHIK_API_KEYS", "PARPARCHIK_RATE_LIMIT_PER_SECOND", "PARPARCHIK_RATE_LIMIT_BURST",
-		"PARPARCHIK_SYNC_INTERVAL", "PARPARCHIK_PROXY_REPOS", "S3_ENDPOINT", "S3_EXTERNAL_ENDPOINT",
-		"AWS_REGION", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY",
+		"PARPARCHIK_SYNC_INTERVAL", "PARPARCHIK_PROXY_REPOS", "PARPARCHIK_VIRTUAL_REPOS",
+		"S3_ENDPOINT", "S3_EXTERNAL_ENDPOINT", "AWS_REGION", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY",
 	} {
 		prev, had := os.LookupEnv(k)
 		if err := os.Unsetenv(k); err != nil {
@@ -114,7 +116,7 @@ func TestLoad_BucketsList(t *testing.T) {
 		t.Fatalf("len(Buckets) = %d, want %d (%+v)", len(cfg.Buckets), len(want), cfg.Buckets)
 	}
 	for i, b := range want {
-		if cfg.Buckets[i] != b {
+		if !reflect.DeepEqual(cfg.Buckets[i], b) {
 			t.Errorf("Buckets[%d] = %+v, want %+v", i, cfg.Buckets[i], b)
 		}
 	}
@@ -266,7 +268,7 @@ func TestLoad_ProxyRepos(t *testing.T) {
 	}
 	for i, b := range want {
 		got := cfg.Buckets[2+i]
-		if got != b {
+		if !reflect.DeepEqual(got, b) {
 			t.Errorf("Buckets[%d] = %+v, want %+v", 2+i, got, b)
 		}
 	}
@@ -304,5 +306,193 @@ func TestLoad_ProxyReposMalformedTokensIgnored(t *testing.T) {
 	}
 	if proxyCount != 1 {
 		t.Errorf("proxyCount = %d, want 1 (only the well-formed token)", proxyCount)
+	}
+}
+
+func TestLoad_ProxyReposWithTTL(t *testing.T) {
+	// Arrange
+	clearParparchikEnv(t)
+	withEnv(t, map[string]string{
+		"PARPARCHIK_PUBLIC_BUCKET":  "pub",
+		"PARPARCHIK_PRIVATE_BUCKET": "priv",
+		"PARPARCHIK_PROXY_REPOS":    "npm-cache|https://registry.npmjs.org|public|1h,no-ttl-cache|https://example.com",
+	})
+
+	// Act
+	cfg, err := Load()
+
+	// Assert
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	withTTL, ok := cfg.BucketByName("npm-cache")
+	if !ok {
+		t.Fatal("BucketByName(npm-cache) not found")
+	}
+	if withTTL.CacheTTL != time.Hour {
+		t.Errorf("CacheTTL = %v, want 1h", withTTL.CacheTTL)
+	}
+	noTTL, ok := cfg.BucketByName("no-ttl-cache")
+	if !ok {
+		t.Fatal("BucketByName(no-ttl-cache) not found")
+	}
+	if noTTL.CacheTTL != 0 {
+		t.Errorf("CacheTTL = %v, want 0 (cache forever, TTL omitted)", noTTL.CacheTTL)
+	}
+}
+
+func TestLoad_ProxyReposInvalidTTL(t *testing.T) {
+	// Arrange
+	clearParparchikEnv(t)
+	withEnv(t, map[string]string{
+		"PARPARCHIK_PUBLIC_BUCKET":  "pub",
+		"PARPARCHIK_PRIVATE_BUCKET": "priv",
+		"PARPARCHIK_PROXY_REPOS":    "npm-cache|https://registry.npmjs.org|public|not-a-duration",
+	})
+
+	// Act
+	_, err := Load()
+
+	// Assert
+	if err == nil {
+		t.Fatal("Load() error = nil, want an error for an invalid ttl duration")
+	}
+}
+
+func TestLoad_VirtualRepos(t *testing.T) {
+	// Arrange
+	clearParparchikEnv(t)
+	withEnv(t, map[string]string{
+		"PARPARCHIK_PUBLIC_BUCKET":  "pub",
+		"PARPARCHIK_PRIVATE_BUCKET": "priv",
+		"PARPARCHIK_VIRTUAL_REPOS":  "all|pub+priv, empty-members|  ",
+	})
+
+	// Act
+	cfg, err := Load()
+
+	// Assert
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	virtual, ok := cfg.BucketByName("all")
+	if !ok {
+		t.Fatal("BucketByName(all) not found")
+	}
+	if virtual.Kind != KindVirtual {
+		t.Errorf("Kind = %q, want %q", virtual.Kind, KindVirtual)
+	}
+	wantMembers := []string{"pub", "priv"}
+	if !reflect.DeepEqual(virtual.Members, wantMembers) {
+		t.Errorf("Members = %v, want %v", virtual.Members, wantMembers)
+	}
+	if virtual.HasStorage() {
+		t.Error("HasStorage() = true for a virtual bucket, want false")
+	}
+	if _, ok := cfg.BucketByName("empty-members"); ok {
+		t.Error("BucketByName(empty-members) found a bucket with zero valid members, want it skipped")
+	}
+}
+
+func TestBucket_HasStorage(t *testing.T) {
+	cases := []struct {
+		kind RepoKind
+		want bool
+	}{
+		{KindHosted, true},
+		{KindProxy, true},
+		{KindVirtual, false},
+	}
+	for _, tc := range cases {
+		b := Bucket{Kind: tc.kind}
+		if got := b.HasStorage(); got != tc.want {
+			t.Errorf("Bucket{Kind: %q}.HasStorage() = %v, want %v", tc.kind, got, tc.want)
+		}
+	}
+}
+
+func TestLoad_VirtualReposRejectsDanglingMember(t *testing.T) {
+	// Arrange
+	clearParparchikEnv(t)
+	withEnv(t, map[string]string{
+		"PARPARCHIK_PUBLIC_BUCKET":  "pub",
+		"PARPARCHIK_PRIVATE_BUCKET": "priv",
+		"PARPARCHIK_VIRTUAL_REPOS":  "all|pub+does-not-exist",
+	})
+
+	// Act
+	_, err := Load()
+
+	// Assert
+	if err == nil {
+		t.Fatal("Load() error = nil, want an error for a virtual repo member that isn't a configured bucket")
+	}
+}
+
+func TestLoad_VirtualReposRejectsNestedVirtualMember(t *testing.T) {
+	// Arrange
+	clearParparchikEnv(t)
+	withEnv(t, map[string]string{
+		"PARPARCHIK_PUBLIC_BUCKET":  "pub",
+		"PARPARCHIK_PRIVATE_BUCKET": "priv",
+		"PARPARCHIK_VIRTUAL_REPOS":  "inner|pub,outer|inner+priv",
+	})
+
+	// Act
+	_, err := Load()
+
+	// Assert
+	if err == nil {
+		t.Fatal("Load() error = nil, want an error for a virtual repo nesting another virtual repo as a member")
+	}
+}
+
+func TestValidateVirtualRepoMembers(t *testing.T) {
+	hosted := Bucket{Name: "pub", Kind: KindHosted}
+	proxy := Bucket{Name: "npm-cache", Kind: KindProxy}
+	virtual := Bucket{Name: "inner", Kind: KindVirtual, Members: []string{"pub"}}
+
+	cases := []struct {
+		name         string
+		allBuckets   []Bucket
+		virtualRepos []Bucket
+		wantErr      bool
+	}{
+		{
+			name:         "valid hosted and proxy members",
+			allBuckets:   []Bucket{hosted, proxy, {Name: "outer", Kind: KindVirtual, Members: []string{"pub", "npm-cache"}}},
+			virtualRepos: []Bucket{{Name: "outer", Kind: KindVirtual, Members: []string{"pub", "npm-cache"}}},
+			wantErr:      false,
+		},
+		{
+			name:         "dangling member",
+			allBuckets:   []Bucket{hosted, {Name: "outer", Kind: KindVirtual, Members: []string{"missing"}}},
+			virtualRepos: []Bucket{{Name: "outer", Kind: KindVirtual, Members: []string{"missing"}}},
+			wantErr:      true,
+		},
+		{
+			name:         "nested virtual member",
+			allBuckets:   []Bucket{hosted, virtual, {Name: "outer", Kind: KindVirtual, Members: []string{"inner"}}},
+			virtualRepos: []Bucket{virtual, {Name: "outer", Kind: KindVirtual, Members: []string{"inner"}}},
+			wantErr:      true,
+		},
+		{
+			name:         "no virtual repos configured",
+			allBuckets:   []Bucket{hosted},
+			virtualRepos: nil,
+			wantErr:      false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Act
+			err := validateVirtualRepoMembers(tc.allBuckets, tc.virtualRepos)
+
+			// Assert
+			if (err != nil) != tc.wantErr {
+				t.Errorf("validateVirtualRepoMembers() error = %v, wantErr %v", err, tc.wantErr)
+			}
+		})
 	}
 }

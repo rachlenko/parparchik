@@ -154,6 +154,43 @@ func TestHandleStatus_DerivesBucketsByTypeNotPosition(t *testing.T) {
 	}
 }
 
+func TestHandleStatus_ExcludesVirtualBucketsFromPublicPrivateDerivation(t *testing.T) {
+	// Arrange: a virtual repo listed FIRST — its zero-value Public=false
+	// must not be mistaken for the convenience "private_bucket".
+	cfg := &config.Config{Buckets: []config.Bucket{
+		{Name: "all", Kind: config.KindVirtual, Members: []string{"pub", "priv"}},
+		{Name: "pub", ManifestKey: "m.json", Public: true, Kind: config.KindHosted},
+		{Name: "priv", ManifestKey: "m.json", Public: false, Kind: config.KindHosted},
+	}}
+	store := newFakeStore()
+	cat := catalog.New(cfg.BucketPriority, cfg.BucketType)
+	res := resolver.New(cfg, cat, store)
+	api := New(cfg, cat, res, store, metricsapi.New())
+	t.Cleanup(api.Close)
+	api.SetReady(true)
+
+	// Act
+	rec := httptest.NewRecorder()
+	api.Routes().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/status", nil))
+
+	// Assert
+	body := decodeJSON(t, rec)
+	if body["public_bucket"] != "pub" {
+		t.Errorf("public_bucket = %v, want pub", body["public_bucket"])
+	}
+	if body["private_bucket"] != "priv" {
+		t.Errorf("private_bucket = %v, want priv (not the virtual bucket \"all\")", body["private_bucket"])
+	}
+	buckets, ok := body["buckets"].([]any)
+	if !ok || len(buckets) != 3 {
+		t.Fatalf("buckets = %v, want 3 entries", body["buckets"])
+	}
+	first, _ := buckets[0].(map[string]any)
+	if first["kind"] != "virtual" {
+		t.Errorf("buckets[0][kind] = %v, want virtual", first["kind"])
+	}
+}
+
 func TestHandleUpdate_MissingFilename(t *testing.T) {
 	// Arrange
 	api, _, _ := newTestAPI(t, true)

@@ -24,6 +24,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/rachlenko/parparchik/golang/internal/catalog"
 	"github.com/rachlenko/parparchik/golang/internal/config"
@@ -95,6 +96,9 @@ func (r *Resolver) setDuplicateCount(n int) {
 func (r *Resolver) Bootstrap(ctx context.Context) error {
 	manifests := make([]catalog.BucketManifest, 0, len(r.cfg.Buckets))
 	for _, bucket := range r.cfg.Buckets {
+		if !bucket.HasStorage() {
+			continue
+		}
 		content, err := r.store.GetObject(ctx, bucket.Name, bucket.ManifestKey)
 		if err != nil {
 			return fmt.Errorf("resolver: bootstrap: fetch manifest for %q: %w", bucket.Name, err)
@@ -115,6 +119,9 @@ func (r *Resolver) Bootstrap(ctx context.Context) error {
 func (r *Resolver) PersistManifests(ctx context.Context) error {
 	var errs []error
 	for _, bucket := range r.cfg.Buckets {
+		if !bucket.HasStorage() {
+			continue
+		}
 		manifest := r.catalog.ManifestForBucket(bucket.Name)
 		body, err := json.Marshal(manifest)
 		if err != nil {
@@ -141,6 +148,9 @@ func (r *Resolver) SyncRegistry(ctx context.Context) error {
 	dups := make(map[string]bool)
 
 	for _, bucket := range r.cfg.Buckets {
+		if !bucket.HasStorage() {
+			continue
+		}
 		objects, err := r.store.ListObjects(ctx, bucket.Name)
 		if err != nil {
 			return fmt.Errorf("resolver: sync: list %q: %w", bucket.Name, err)
@@ -173,6 +183,9 @@ func (r *Resolver) SyncRegistry(ctx context.Context) error {
 // not exist anywhere; a non-nil error means a bucket lookup itself failed.
 func (r *Resolver) ResolveMissingFile(ctx context.Context, key string) (*catalog.Entry, error) {
 	for _, bucket := range r.cfg.Buckets {
+		if !bucket.HasStorage() {
+			continue
+		}
 		obj, err := r.store.HeadObject(ctx, bucket.Name, key)
 		if err != nil {
 			return nil, fmt.Errorf("resolver: resolve missing file %q in %q: %w", key, bucket.Name, err)
@@ -223,8 +236,11 @@ func (r *Resolver) ResolveRoute(ctx context.Context, route string) (*catalog.Ent
 		}
 		key := strings.TrimPrefix(route, prefix)
 
-		if bucket.Kind == config.KindProxy {
+		switch bucket.Kind {
+		case config.KindProxy:
 			return r.resolveProxyRoute(ctx, bucket, key)
+		case config.KindVirtual:
+			return r.resolveVirtualRoute(ctx, bucket, key)
 		}
 
 		resolved, err := r.ResolveMissingFile(ctx, key)
@@ -263,7 +279,7 @@ func parseVirtualPrefix(route string) (key string, public bool, ok bool) {
 // persisting on the first hit.
 func (r *Resolver) resolveMissingFileByType(ctx context.Context, key string, public bool) (*catalog.Entry, error) {
 	for _, bucket := range r.cfg.Buckets {
-		if bucket.Public != public {
+		if !bucket.HasStorage() || bucket.Public != public {
 			continue
 		}
 		obj, err := r.store.HeadObject(ctx, bucket.Name, key)
@@ -284,11 +300,12 @@ func (r *Resolver) resolveMissingFileByType(ctx context.Context, key string, pub
 }
 
 // resolveProxyRoute implements the fetch-through-and-cache behavior for a
-// config.KindProxy bucket: a cache hit (the key already exists in the
-// proxy's own S3 cache bucket) is served directly; a cache miss triggers an
-// upstream fetch via r.fetcher, and a successful fetch is cached and
-// registered before being served. Returns (nil, nil) when the key genuinely
-// doesn't exist upstream either — not an error, just a 404.
+// config.KindProxy bucket: a cache hit that hasn't exceeded bucket.CacheTTL
+// (the key already exists in the proxy's own S3 cache bucket, and hasn't
+// gone stale) is served directly; a cache miss — or an expired entry —
+// triggers an upstream fetch via r.fetcher, and a successful fetch is
+// cached and registered before being served. Returns (nil, nil) when the
+// key genuinely doesn't exist upstream either — not an error, just a 404.
 //
 // Concurrent misses for the same not-yet-cached key each independently hit
 // the upstream and re-cache (no request coalescing/singleflight) — fine for
@@ -300,8 +317,8 @@ func (r *Resolver) resolveProxyRoute(ctx context.Context, bucket config.Bucket, 
 	if err != nil {
 		return nil, fmt.Errorf("resolver: proxy cache check %q in %q: %w", key, bucket.Name, err)
 	}
-	if obj != nil {
-		return r.registerProxyResult(ctx, bucket.Name, key, obj.Size, obj.LastModified, false)
+	if obj != nil && !proxyCacheExpired(bucket, obj) {
+		return r.registerResolvedObject(ctx, bucket.Name, key, obj.Size, obj.LastModified, false)
 	}
 
 	body, contentType, ok, err := r.fetcher.Fetch(ctx, bucket.UpstreamURL, key)
@@ -315,25 +332,117 @@ func (r *Resolver) resolveProxyRoute(ctx context.Context, bucket config.Bucket, 
 	if err := r.store.PutObject(ctx, bucket.Name, key, body, contentType); err != nil {
 		return nil, fmt.Errorf("resolver: proxy cache store %q in %q: %w", key, bucket.Name, err)
 	}
-	return r.registerProxyResult(ctx, bucket.Name, key, int64(len(body)), "", true)
+	return r.registerResolvedObject(ctx, bucket.Name, key, int64(len(body)), "", true)
 }
 
-// registerProxyResult applies catalog.Register's priority check to a
-// proxy-cached object and only returns it if this exact bucket still won
-// the key.
+// proxyCacheExpired reports whether a cached proxy object is older than
+// bucket.CacheTTL. CacheTTL == 0 means "cache forever" (never expires) —
+// the original proxy-repository behavior, preserved as the default. The
+// object's storage LastModified timestamp doubles as its "cached at" time,
+// since resolveProxyRoute is the only thing that ever writes into a proxy
+// bucket: S3/MinIO stamps LastModified on PUT, so no separate cache
+// timestamp needs to be tracked in the catalog.
+func proxyCacheExpired(bucket config.Bucket, obj *objectstore.Object) bool {
+	if bucket.CacheTTL <= 0 {
+		return false
+	}
+	cachedAt, err := time.Parse(time.RFC3339, obj.LastModified)
+	if err != nil {
+		// Can't determine age from an unparseable timestamp — refresh
+		// rather than risk serving indefinitely-stale content.
+		return true
+	}
+	return time.Since(cachedAt) > bucket.CacheTTL
+}
+
+// resolveVirtualRoute resolves a route matched to a config.KindVirtual
+// bucket by trying each of its Members in order, returning the first one
+// that resolves. A member name that doesn't match any configured bucket is
+// skipped rather than treated as an error — see parseVirtualRepos's doc
+// comment on why a dangling reference isn't inherently invalid config.
+func (r *Resolver) resolveVirtualRoute(ctx context.Context, virtual config.Bucket, key string) (*catalog.Entry, error) {
+	for _, memberName := range virtual.Members {
+		member, ok := r.cfg.BucketByName(memberName)
+		if !ok {
+			// config.Load's validateVirtualRepoMembers rejects this at
+			// startup, so reaching here means Config was constructed
+			// directly rather than via Load — still worth surfacing
+			// rather than silently degrading to an unexplained 404.
+			slog.Warn("resolver: virtual repo references unknown member, skipping", "virtual_repo", virtual.Name, "member", memberName)
+			continue
+		}
+
+		var (
+			entry *catalog.Entry
+			err   error
+		)
+		switch member.Kind {
+		case config.KindProxy:
+			entry, err = r.resolveProxyRoute(ctx, member, key)
+		case config.KindVirtual:
+			// A virtual repo listing another virtual repo as a member is
+			// almost certainly a config mistake (and risks a resolution
+			// cycle) — skip rather than recurse. Also rejected at startup
+			// by validateVirtualRepoMembers when Config comes from Load.
+			slog.Warn("resolver: virtual repo references another virtual repo as a member, skipping (nesting unsupported)", "virtual_repo", virtual.Name, "member", memberName)
+			continue
+		default:
+			entry, err = r.resolveHostedMemberRoute(ctx, member, key)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("resolver: virtual repo %q: member %q: %w", virtual.Name, memberName, err)
+		}
+		if entry != nil {
+			return entry, nil
+		}
+	}
+	return nil, nil
+}
+
+// resolveHostedMemberRoute checks whether a specific hosted-bucket member
+// of a virtual repo currently owns key, with a single HEAD against that
+// member only.
 //
-// This uses Register, not Set, deliberately: an earlier version used Set
-// (unconditional overwrite) here, which let a proxy repository's cache
-// silently hijack a key already legitimately owned by a higher-priority
-// hosted bucket — deleting that hosted bucket's route index entry in the
-// process, since the catalog's key namespace is shared flat across every
-// bucket regardless of kind. Register's priority check prevents that; if a
-// higher-priority bucket already owns key, the freshly fetched/cached
-// object stays on disk in the proxy's cache bucket (harmless) but is not
+// This deliberately does NOT reuse ResolveMissingFile: an earlier version
+// did, but ResolveMissingFile scans *every* configured bucket (not just
+// this member) and unconditionally persists manifests for the whole
+// fleet — a go-reviewer pass flagged that as O(members × total buckets)
+// HEAD calls plus a full-fleet manifest-persist sweep per virtual-repo
+// request, all to answer a question ("does this one specific member have
+// this key?") that a single targeted HEAD already answers. Uses the same
+// registerResolvedObject priority-check helper resolveProxyRoute uses, so
+// a higher-priority bucket elsewhere still can't be shadowed by this
+// member — consistent with the "route/priority mismatch = 404" rule
+// documented on registerResolvedObject.
+func (r *Resolver) resolveHostedMemberRoute(ctx context.Context, member config.Bucket, key string) (*catalog.Entry, error) {
+	obj, err := r.store.HeadObject(ctx, member.Name, key)
+	if err != nil {
+		return nil, fmt.Errorf("resolver: virtual member %q: check %q: %w", member.Name, key, err)
+	}
+	if obj == nil {
+		return nil, nil
+	}
+	return r.registerResolvedObject(ctx, member.Name, key, obj.Size, obj.LastModified, true)
+}
+
+// registerResolvedObject applies catalog.Register's priority check to an
+// object a caller has already confirmed (via HEAD or fetch) lives in
+// bucketName, and only returns it if this exact bucket still won the key.
+// Used by both resolveProxyRoute (a proxy cache hit/fetch) and
+// resolveHostedMemberRoute (a virtual repo's hosted-member check).
+//
+// This uses Register, not Set, deliberately: an earlier version of
+// resolveProxyRoute used Set (unconditional overwrite) here, which let a
+// proxy repository's cache silently hijack a key already legitimately
+// owned by a higher-priority hosted bucket — deleting that hosted bucket's
+// route index entry in the process, since the catalog's key namespace is
+// shared flat across every bucket regardless of kind. Register's priority
+// check prevents that; if a higher-priority bucket already owns key, the
+// confirmed object stays on disk in bucketName (harmless) but is not
 // surfaced through this route — the same "route/priority mismatch = 404,
 // never serve the wrong bucket's content" rule ResolveMissingFile already
 // applies elsewhere in this file.
-func (r *Resolver) registerProxyResult(ctx context.Context, bucketName, key string, size int64, lastModified string, persist bool) (*catalog.Entry, error) {
+func (r *Resolver) registerResolvedObject(ctx context.Context, bucketName, key string, size int64, lastModified string, persist bool) (*catalog.Entry, error) {
 	r.catalog.Register(key, bucketName, size, lastModified)
 	if persist {
 		if err := r.PersistManifests(ctx); err != nil {
@@ -387,6 +496,9 @@ func (r *Resolver) Relocate(ctx context.Context, filename string) (*RelocateResu
 	foundCount := 0
 
 	for _, bucket := range r.cfg.Buckets {
+		if !bucket.HasStorage() {
+			continue
+		}
 		obj, err := r.store.HeadObject(ctx, bucket.Name, filename)
 		if err != nil {
 			return nil, fmt.Errorf("resolver: relocate: check %q in %q: %w", filename, bucket.Name, err)

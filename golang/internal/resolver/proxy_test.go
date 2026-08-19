@@ -5,9 +5,11 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/rachlenko/parparchik/golang/internal/catalog"
 	"github.com/rachlenko/parparchik/golang/internal/config"
+	"github.com/rachlenko/parparchik/golang/internal/objectstore"
 )
 
 // fakeFetcher is a hand-written proxycache.Fetcher for tests, so proxy
@@ -189,5 +191,118 @@ func TestResolveRoute_ProxyDoesNotHijackHigherPriorityHostedKey(t *testing.T) {
 	cached, err := store.HeadObject(context.Background(), "npm-cache", "shared.txt")
 	if err != nil || cached == nil {
 		t.Errorf("expected the fetched object to still be cached in npm-cache, HeadObject = %+v, err = %v", cached, err)
+	}
+}
+
+func TestResolveRoute_ProxyCacheTTL_FreshEntryServedWithoutRefetch(t *testing.T) {
+	// Arrange: cached just now, well within a 1h TTL.
+	cfg := &config.Config{Buckets: []config.Bucket{
+		{Name: "npm-cache", ManifestKey: "manifest.json", Public: true, Kind: config.KindProxy,
+			UpstreamURL: "https://registry.npmjs.org", CacheTTL: time.Hour},
+	}}
+	store := newFakeStore()
+	fetcher := newFakeFetcher()
+	cat := catalog.New(cfg.BucketPriority, cfg.BucketType)
+	r := New(cfg, cat, store, WithFetcher(fetcher))
+
+	store.put("npm-cache", "lodash.tgz", []byte("fresh"), time.Now().UTC().Format(time.RFC3339))
+	fetcher.put("https://registry.npmjs.org", "lodash.tgz", []byte("stale-upstream-would-be-wrong"))
+
+	// Act
+	entry, err := r.ResolveRoute(context.Background(), "/npm-cache/lodash.tgz")
+
+	// Assert
+	if err != nil {
+		t.Fatalf("ResolveRoute() error = %v", err)
+	}
+	if entry == nil || entry.Size != int64(len("fresh")) {
+		t.Fatalf("ResolveRoute() = %+v, want the cached entry served as-is", entry)
+	}
+	if fetcher.fetches != 0 {
+		t.Errorf("fetches = %d, want 0 (fresh entry should not trigger a re-fetch)", fetcher.fetches)
+	}
+}
+
+func TestResolveRoute_ProxyCacheTTL_ExpiredEntryTriggersRefetch(t *testing.T) {
+	// Arrange: cached long ago, past a 1h TTL.
+	cfg := &config.Config{Buckets: []config.Bucket{
+		{Name: "npm-cache", ManifestKey: "manifest.json", Public: true, Kind: config.KindProxy,
+			UpstreamURL: "https://registry.npmjs.org", CacheTTL: time.Hour},
+	}}
+	store := newFakeStore()
+	fetcher := newFakeFetcher()
+	cat := catalog.New(cfg.BucketPriority, cfg.BucketType)
+	r := New(cfg, cat, store, WithFetcher(fetcher))
+
+	staleTime := time.Now().UTC().Add(-2 * time.Hour).Format(time.RFC3339)
+	store.put("npm-cache", "lodash.tgz", []byte("stale-cached-copy"), staleTime)
+	fetcher.put("https://registry.npmjs.org", "lodash.tgz", []byte("fresh-upstream-copy"))
+
+	// Act
+	entry, err := r.ResolveRoute(context.Background(), "/npm-cache/lodash.tgz")
+
+	// Assert
+	if err != nil {
+		t.Fatalf("ResolveRoute() error = %v", err)
+	}
+	if entry == nil || entry.Size != int64(len("fresh-upstream-copy")) {
+		t.Fatalf("ResolveRoute() = %+v, want the freshly re-fetched entry", entry)
+	}
+	if fetcher.fetches != 1 {
+		t.Errorf("fetches = %d, want 1 (expired entry should trigger exactly one re-fetch)", fetcher.fetches)
+	}
+}
+
+func TestProxyCacheExpired(t *testing.T) {
+	now := time.Now().UTC()
+	cases := []struct {
+		name         string
+		ttl          time.Duration
+		lastModified string
+		want         bool
+	}{
+		{"zero TTL never expires, even with a very old timestamp", 0, now.Add(-24 * time.Hour * 365).Format(time.RFC3339), false},
+		{"negative TTL treated same as zero", -time.Hour, now.Format(time.RFC3339), false},
+		{"fresh entry within TTL", time.Hour, now.Add(-time.Minute).Format(time.RFC3339), false},
+		{"entry older than TTL", time.Hour, now.Add(-2 * time.Hour).Format(time.RFC3339), true},
+		{"unparseable timestamp fails safe to expired", time.Hour, "not-a-timestamp", true},
+		{"empty timestamp fails safe to expired", time.Hour, "", true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Arrange
+			bucket := config.Bucket{CacheTTL: tc.ttl}
+			obj := &objectstore.Object{LastModified: tc.lastModified}
+
+			// Act
+			got := proxyCacheExpired(bucket, obj)
+
+			// Assert
+			if got != tc.want {
+				t.Errorf("proxyCacheExpired() = %v, want %v (ttl=%v lastModified=%q)", got, tc.want, tc.ttl, tc.lastModified)
+			}
+		})
+	}
+}
+
+func TestResolveRoute_ProxyCacheTTL_ZeroMeansCacheForever(t *testing.T) {
+	// Arrange: CacheTTL left at its zero value; entry cached long ago.
+	r, store, fetcher, _ := newTestResolverWithProxy()
+	staleTime := time.Now().UTC().Add(-24 * time.Hour * 365).Format(time.RFC3339)
+	store.put("npm-cache", "lodash.tgz", []byte("ancient-but-still-valid"), staleTime)
+
+	// Act
+	entry, err := r.ResolveRoute(context.Background(), "/npm-cache/lodash.tgz")
+
+	// Assert
+	if err != nil {
+		t.Fatalf("ResolveRoute() error = %v", err)
+	}
+	if entry == nil || entry.Size != int64(len("ancient-but-still-valid")) {
+		t.Fatalf("ResolveRoute() = %+v, want the old cached entry served as-is", entry)
+	}
+	if fetcher.fetches != 0 {
+		t.Errorf("fetches = %d, want 0 (CacheTTL=0 means cache forever)", fetcher.fetches)
 	}
 }

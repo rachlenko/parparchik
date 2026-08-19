@@ -79,7 +79,7 @@ golang/
 │   │   ├── terraform/        Terraform Registry Protocol path parsing (primitives only, no format.Format — see package doc)
 │   │   └── docker/          OCI Distribution manifest/blob path parsing (primitives only, no format.Format — see package doc)
 │   ├── scan/               vulnerability scanning: Scanner interface, OSV.dev-backed implementation, Policy (not yet wired to an ingest hook)
-│   ├── resolver/           route resolution, reconciliation, relocate, proxy fetch-through — the core business logic
+│   ├── resolver/           route resolution, reconciliation, relocate, proxy fetch-through + TTL, virtual repo aggregation — the core business logic
 │   ├── httpapi/            HTTP handlers, routing, auth + rate-limit middleware, key validation
 │   └── metricsapi/         Prometheus metrics (client_golang)
 ```
@@ -126,7 +126,8 @@ the security hardening this version adds:
 | --- | --- | --- |
 | `PARPARCHIK_PUBLIC_BUCKET` / `PARPARCHIK_PRIVATE_BUCKET` | | Legacy 2-bucket config |
 | `PARPARCHIK_BUCKETS` | | Multi-bucket config: `name:manifest:public,...` |
-| `PARPARCHIK_PROXY_REPOS` | | Proxy (fetch-through cache) repos: `name\|upstream_url\|public,...` — see Proxy repositories below |
+| `PARPARCHIK_PROXY_REPOS` | | Proxy (fetch-through cache) repos: `name\|upstream_url\|public\|ttl,...` — see Proxy repositories below |
+| `PARPARCHIK_VIRTUAL_REPOS` | | Virtual (aggregating) repos: `name\|member1+member2+...,...` — see Virtual repositories below |
 | `PARPARCHIK_REGISTRY_MANIFEST_KEY` | `.parparchik/files.json` | Manifest key (legacy mode) |
 | `PARPARCHIK_HOST` | `0.0.0.0` | Listen host |
 | `PARPARCHIK_PORT` | `8080` | Listen port |
@@ -146,25 +147,43 @@ the single most-used feature of Nexus/Artifactory-class tools in practice.
 Configure one via `PARPARCHIK_PROXY_REPOS`:
 
 ```bash
-export PARPARCHIK_PROXY_REPOS="npm-cache|https://registry.npmjs.org|public"
+export PARPARCHIK_PROXY_REPOS="npm-cache|https://registry.npmjs.org|public|1h"
 ```
 
-Each token is `name|upstream_url|public` (pipe-separated — upstream URLs
-already contain colons from their scheme). Each proxy repo gets its own S3
-bucket (named after the repo) as its cache. Requesting `GET
-/npm-cache/<key>`:
+Each token is `name|upstream_url|public|ttl` (pipe-separated — upstream
+URLs already contain colons from their scheme; `public` and `ttl` are both
+optional). Each proxy repo gets its own S3 bucket (named after the repo) as
+its cache. Requesting `GET /npm-cache/<key>`:
 
-1. Checks the cache bucket for `<key>` — a hit is served immediately, no
-   upstream call.
-2. On a miss, fetches `<upstream_url>/<key>` (`internal/proxycache.Fetcher`
-   — a plain HTTP GET; a real npm/PyPI/Maven Central/Docker Hub upstream
-   needs a protocol-aware fetcher, not implemented here yet), caches a
-   successful response into the bucket, registers it in the catalog, and
-   serves it. A genuine upstream 404 is a 404, not an error.
+1. Checks the cache bucket for `<key>` — a hit younger than `ttl` (a Go
+   duration string, e.g. `1h`, `30m`; omitted or `0` means cache forever,
+   the original behavior) is served immediately, no upstream call.
+2. On a miss (or an expired entry), fetches `<upstream_url>/<key>`
+   (`internal/proxycache.Fetcher` — a plain HTTP GET; a real npm/PyPI/Maven
+   Central/Docker Hub upstream needs a protocol-aware fetcher, not
+   implemented here yet), caches a successful response into the bucket,
+   registers it in the catalog, and serves it. A genuine upstream 404 is a
+   404, not an error.
 
-Not yet implemented: cache TTL/expiry (entries are cached until explicitly
-relocated/removed) and virtual/group repositories that aggregate multiple
-hosted+proxy repos under one route — see `docs/plans/`.
+## Virtual repositories
+
+A virtual repository aggregates other repositories (hosted or proxy) under
+one route namespace, resolved in a configured priority order. Configure one
+via `PARPARCHIK_VIRTUAL_REPOS`:
+
+```bash
+export PARPARCHIK_VIRTUAL_REPOS="all|public-bucket+npm-cache+private-bucket"
+```
+
+Each token is `name|member1+member2+...` (`+`-joined member bucket names).
+Requesting `GET /all/<key>` tries each member in order and serves the first
+one that resolves `<key>` — a hosted member via a single targeted `HEAD`,
+a proxy member via its usual fetch-through-and-cache path. A virtual
+repository has no storage of its own (`Bucket.HasStorage()` is false), so
+it's excluded from every operation that touches real S3 storage (sync,
+bootstrap, relocate, manifest persistence). A member name that isn't a
+configured hosted/proxy bucket, or that is itself another virtual
+repository (nesting isn't supported), fails startup.
 
 ## Vulnerability scanning
 

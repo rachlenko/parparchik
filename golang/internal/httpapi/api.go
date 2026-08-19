@@ -133,7 +133,15 @@ func (a *API) handleStatus(w http.ResponseWriter, r *http.Request) {
 			"name":         b.Name,
 			"manifest_key": b.ManifestKey,
 			"public":       b.Public,
+			"kind":         string(b.Kind),
 		})
+		// Virtual repos have no storage of their own and no meaningful
+		// public/private flag (Public is always its zero value, false) —
+		// excluding them here keeps them from being misreported as the
+		// convenience "private_bucket" just by being first in the list.
+		if !b.HasStorage() {
+			continue
+		}
 		switch {
 		case b.Public && publicBucket == "":
 			publicBucket = b.Name
