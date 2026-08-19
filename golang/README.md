@@ -86,6 +86,7 @@ golang/
 │   ├── replication/        pull-only cross-instance sync over the existing HTTP API (GET /list + GET /{bucket}/{key}); not yet wired to a scheduled goroutine, no push direction
 │   ├── authz/              per-repository, per-action RBAC primitives (Authorizer, Role, Grant, ServiceAccounts bridge for the existing API-key auth); not yet wired into httpapi's live auth middleware, no OIDC/SSO
 │   ├── webhook/            event notifications (Registry + Dispatcher) with retry/backoff and per-attempt delivery status; not yet wired to any live event source
+│   ├── reporting/          cross-repo search + CSV/JSON reports (policy violations, license breakdown, storage usage) over catalog/license/scan/policy Records; not wired to an HTTP endpoint — no enriched Record data source exists yet
 │   ├── resolver/           route resolution, reconciliation, relocate, proxy fetch-through + TTL, virtual repo aggregation — the core business logic
 │   ├── httpapi/            HTTP handlers, routing, auth + rate-limit middleware, key validation
 │   └── metricsapi/         Prometheus metrics (client_golang)
@@ -285,6 +286,20 @@ operator configuration, not user input — this package does not validate or
 allowlist it, so anything that later lets an untrusted party register a
 subscriber URL must add its own SSRF defenses before doing so; see the
 package doc comment.
+
+## Reporting & cross-repo search
+
+`internal/reporting` joins `catalog.Entry` with optional license/scan/policy
+data into a `Record`, then offers `Search` (by name substring, exact
+version, license SPDX ID, vulnerability status/severity) and three report
+types — `PolicyViolationsReport`, `LicenseBreakdown`, and
+`StorageUsagePerRepository` (the only one computable from real,
+unenriched catalog data alone) — each exportable as JSON or CSV.
+Deliberately API-only, no web UI, per the plan; even the API side has no
+real source of enriched `[]Record` data yet, since nothing in this
+codebase attaches license/scan/policy results to a catalog entry anywhere
+today. A `Record.PolicyVerdict == nil` ("never evaluated") is treated as
+absent data, not an implicit allow.
 
 ## Development
 
