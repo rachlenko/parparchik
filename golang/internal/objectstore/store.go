@@ -35,6 +35,13 @@ type Store interface {
 	// PutObject writes content to bucket/key.
 	PutObject(ctx context.Context, bucket, key string, content []byte, contentType string) error
 
+	// DeleteObject removes bucket/key. Deleting an already-absent key is
+	// not an error — S3's DeleteObject API itself is idempotent this way,
+	// and callers (e.g. internal/cleanup) that retry a partially-failed
+	// batch should not have to distinguish "already gone" from "just
+	// deleted".
+	DeleteObject(ctx context.Context, bucket, key string) error
+
 	// PublicURL returns an unsigned URL for a public bucket's object.
 	PublicURL(bucket, key string) string
 

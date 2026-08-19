@@ -177,6 +177,17 @@ func (s *S3Store) PutObject(ctx context.Context, bucket, key string, content []b
 	return nil
 }
 
+func (s *S3Store) DeleteObject(ctx context.Context, bucket, key string) error {
+	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return fmt.Errorf("objectstore: delete %q/%q: %w", bucket, key, err)
+	}
+	return nil
+}
+
 func (s *S3Store) PublicURL(bucket, key string) string {
 	if s.externalEndpoint != "" {
 		// externalEndpoint is already a full scheme://host URL (resolved

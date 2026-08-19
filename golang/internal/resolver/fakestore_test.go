@@ -73,6 +73,13 @@ func (s *fakeStore) PutObject(_ context.Context, bucket, key string, content []b
 	return nil
 }
 
+func (s *fakeStore) DeleteObject(_ context.Context, bucket, key string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.buckets[bucket], key)
+	return nil
+}
+
 func (s *fakeStore) PublicURL(bucket, key string) string {
 	return fmt.Sprintf("http://public.example/%s/%s", bucket, key)
 }

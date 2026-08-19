@@ -55,6 +55,11 @@ func (s *fakeStore) PutObject(context.Context, string, string, []byte, string) e
 	return nil
 }
 
+func (s *fakeStore) DeleteObject(_ context.Context, bucket, key string) error {
+	delete(s.objects[bucket], key)
+	return nil
+}
+
 func (s *fakeStore) PublicURL(bucket, key string) string {
 	return "http://public.example/" + bucket + "/" + key
 }

@@ -1,10 +1,11 @@
 package objectstore
 
 // Tests in this file exercise S3Store's actual HTTP call sites
-// (ListObjects/HeadObject/GetObject/PutObject) against a real HTTP server
-// serving hand-built S3 API responses, rather than only the pure helpers
-// (resolveEndpointURL, PublicURL, PresignedURL) the rest of this package's
-// tests cover. This closes the gap flagged in docs/plans/ Task 11.
+// (ListObjects/HeadObject/GetObject/PutObject/DeleteObject) against a real
+// HTTP server serving hand-built S3 API responses, rather than only the
+// pure helpers (resolveEndpointURL, PublicURL, PresignedURL) the rest of
+// this package's tests cover. This closes the gap flagged in docs/plans/
+// Task 11.
 
 import (
 	"context"
@@ -249,6 +250,70 @@ func TestS3Store_PutObject_Error(t *testing.T) {
 	// Assert
 	if err == nil {
 		t.Fatal("PutObject() error = nil, want an error for a 403")
+	}
+}
+
+func TestS3Store_DeleteObject(t *testing.T) {
+	// Arrange
+	var gotMethod, gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	store := newTestStoreAgainst(t, srv)
+
+	// Act
+	err := store.DeleteObject(context.Background(), "my-bucket", "my-key")
+
+	// Assert
+	if err != nil {
+		t.Fatalf("DeleteObject() error = %v", err)
+	}
+	if gotMethod != http.MethodDelete {
+		t.Errorf("method = %s, want DELETE", gotMethod)
+	}
+	if gotPath != "/my-bucket/my-key" {
+		t.Errorf("path = %q, want /my-bucket/my-key", gotPath)
+	}
+}
+
+func TestS3Store_DeleteObject_AlreadyAbsentIsNotAnError(t *testing.T) {
+	// Arrange: real S3's DeleteObject is idempotent — a 204 for a key that
+	// was never there, same as for one that just got deleted.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	store := newTestStoreAgainst(t, srv)
+
+	// Act
+	err := store.DeleteObject(context.Background(), "my-bucket", "never-existed-key")
+
+	// Assert
+	if err != nil {
+		t.Fatalf("DeleteObject() error = %v, want nil", err)
+	}
+}
+
+func TestS3Store_DeleteObject_TransportFailureIsAnError(t *testing.T) {
+	// Arrange
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer srv.Close()
+
+	store := newTestStoreAgainst(t, srv)
+
+	// Act
+	err := store.DeleteObject(context.Background(), "my-bucket", "my-key")
+
+	// Assert
+	if err == nil {
+		t.Fatal("DeleteObject() error = nil, want an error for a 403")
 	}
 }
 

@@ -82,6 +82,7 @@ golang/
 │   ├── license/            license detection: npm/Python/Maven metadata adapters, SPDX normalization (not yet wired to catalog entries or a policy check)
 │   ├── sbom/               CycloneDX SBOM generation + ingestion, combining catalog/license/scan data (not yet wired to an HTTP endpoint or catalog storage)
 │   ├── policy/             allow/quarantine/deny policy engine over scan+license+age, with waivers and an audit log (not yet wired to a request path — see below)
+│   ├── cleanup/            retention rules (max age, max total size, max version count) over catalog entries: Plan (dry-run) + Execute (real delete via objectstore.Store.DeleteObject); not yet wired to a scheduled GC goroutine
 │   ├── resolver/           route resolution, reconciliation, relocate, proxy fetch-through + TTL, virtual repo aggregation — the core business logic
 │   ├── httpapi/            HTTP handlers, routing, auth + rate-limit middleware, key validation
 │   └── metricsapi/         Prometheus metrics (client_golang)
@@ -215,6 +216,22 @@ mounted as an HTTP sub-router. Note that `Ruleset{}`'s zero value is
 both default to `scan.SeverityUnknown`, so an unconfigured `Ruleset`
 denies any artifact with a known finding above that; a real deployment
 must set `MaxSeverity` explicitly.
+
+## Cleanup & retention
+
+`internal/cleanup` prunes old catalog entries under a `Rule` of up to three
+independent thresholds — max age, max total size (evicts oldest-first
+until under budget), and max version count within a caller-supplied
+package group — mainly relevant to bounding a proxy repository cache's
+(Task 24) footprint over time. `Rule.Plan` is a pure dry-run: it decides
+what would be deleted without touching anything; `cleanup.Execute` then
+actually calls the new `objectstore.Store.DeleteObject` and removes each
+successfully-deleted entry from the catalog, continuing past individual
+failures rather than aborting the whole batch. Not yet wired into a
+scheduled goroutine in `cmd/parparchik`, and there's no per-bucket config
+surface for retention thresholds yet either — both are real product
+decisions (default retention policy, config schema) deferred until there's
+a concrete deployment to size them against.
 
 ## Development
 
