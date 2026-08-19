@@ -83,6 +83,7 @@ golang/
 │   ├── sbom/               CycloneDX SBOM generation + ingestion, combining catalog/license/scan data (not yet wired to an HTTP endpoint or catalog storage)
 │   ├── policy/             allow/quarantine/deny policy engine over scan+license+age, with waivers and an audit log (not yet wired to a request path — see below)
 │   ├── cleanup/            retention rules (max age, max total size, max version count) over catalog entries: Plan (dry-run) + Execute (real delete via objectstore.Store.DeleteObject); not yet wired to a scheduled GC goroutine
+│   ├── replication/        pull-only cross-instance sync over the existing HTTP API (GET /list + GET /{bucket}/{key}); not yet wired to a scheduled goroutine, no push direction
 │   ├── resolver/           route resolution, reconciliation, relocate, proxy fetch-through + TTL, virtual repo aggregation — the core business logic
 │   ├── httpapi/            HTTP handlers, routing, auth + rate-limit middleware, key validation
 │   └── metricsapi/         Prometheus metrics (client_golang)
@@ -232,6 +233,23 @@ scheduled goroutine in `cmd/parparchik`, and there's no per-bucket config
 surface for retention thresholds yet either — both are real product
 decisions (default retention policy, config schema) deferred until there's
 a concrete deployment to size them against.
+
+## Replication
+
+`internal/replication` pulls a remote parparchik instance's catalog and
+objects into this instance's own storage and catalog, entirely over the
+existing HTTP API — no new wire protocol, no new server-side endpoint.
+`HTTPClient.FetchManifest` reads the remote's `GET /list`; `FetchObject`
+follows `GET /{bucket}/{key}`'s redirect itself (rather than letting
+`http.Client` auto-follow it) specifically so the `X-API-Key` used to
+authenticate against the *remote parparchik instance* is never forwarded
+to the redirect target — a different host (S3/MinIO/a CDN) that header has
+no business reaching. `Puller.Pull` skips re-fetching a key it already has
+an equal-or-newer copy of locally, then reuses `catalog.Register`'s
+existing priority semantics unchanged for conflict resolution — no new
+conflict model. Push (the reverse direction) and a scheduled replication
+goroutine in `cmd/parparchik` are not implemented; the latter needs a real
+peer-list/interval config surface this project doesn't have yet.
 
 ## Development
 
