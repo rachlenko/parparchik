@@ -66,7 +66,7 @@ func (f *HTTPFetcher) Fetch(ctx context.Context, upstreamURL, key string) ([]byt
 	if err != nil {
 		return nil, "", false, fmt.Errorf("proxycache: fetch %q: %w", url, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, "", false, nil

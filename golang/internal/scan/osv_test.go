@@ -12,7 +12,7 @@ func TestOSVScanner_Scan_NoVulnerabilities(t *testing.T) {
 	// Arrange
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{}`))
+		_, _ = w.Write([]byte(`{}`))
 	}))
 	defer srv.Close()
 
@@ -34,9 +34,9 @@ func TestOSVScanner_Scan_FindingsParsedWithSeverity(t *testing.T) {
 	// Arrange
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewDecoder(r.Body).Decode(&gotBody)
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"vulns": [
 				{"id": "GHSA-aaaa", "summary": "prototype pollution", "database_specific": {"severity": "HIGH"}},
 				{"id": "GHSA-bbbb", "summary": "minor issue", "database_specific": {"severity": "LOW"}},

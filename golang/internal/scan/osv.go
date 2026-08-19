@@ -104,7 +104,7 @@ func (s *OSVScanner) Scan(ctx context.Context, ecosystem, name, version string) 
 	if err != nil {
 		return Result{}, fmt.Errorf("scan: osv: query %s/%s@%s: %w", ecosystem, name, version, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return Result{}, fmt.Errorf("scan: osv: query %s/%s@%s: unexpected status %d", ecosystem, name, version, resp.StatusCode)

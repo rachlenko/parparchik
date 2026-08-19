@@ -37,12 +37,6 @@ func (s *fakeStore) put(bucket, key string, content []byte, lastModified string)
 	s.buckets[bucket][key] = fakeObject{content: content, lastModified: lastModified}
 }
 
-func (s *fakeStore) remove(bucket, key string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.buckets[bucket], key)
-}
-
 func (s *fakeStore) ListObjects(_ context.Context, bucket string) ([]objectstore.Object, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

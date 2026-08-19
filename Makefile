@@ -28,6 +28,10 @@ go-build: ## Build the Go binary (golang/)
 go-test: ## Run the Go test suite with race detection and coverage
 	cd golang && go vet ./... && gofmt -l . && go test -race -cover ./...
 
+.PHONY: go-lint
+go-lint: ## Run golangci-lint against golang/
+	cd golang && golangci-lint run ./...
+
 .PHONY: go-docker-up
 go-docker-up: ## Start MinIO + the Go parparchik service
 	cd golang && $(COMPOSE) up -d --build

@@ -19,6 +19,9 @@ import (
 // tests, so they don't need a real S3/MinIO endpoint.
 type fakeStore struct {
 	objects map[string]map[string]objectstore.Object
+
+	listObjectsCalls int
+	putObjectCalls   int
 }
 
 func newFakeStore() *fakeStore {
@@ -33,6 +36,7 @@ func (s *fakeStore) put(bucket, key string, size int64) {
 }
 
 func (s *fakeStore) ListObjects(context.Context, string) ([]objectstore.Object, error) {
+	s.listObjectsCalls++
 	return nil, nil
 }
 
@@ -46,7 +50,10 @@ func (s *fakeStore) HeadObject(_ context.Context, bucket, key string) (*objectst
 
 func (s *fakeStore) GetObject(context.Context, string, string) ([]byte, error) { return nil, nil }
 
-func (s *fakeStore) PutObject(context.Context, string, string, []byte, string) error { return nil }
+func (s *fakeStore) PutObject(context.Context, string, string, []byte, string) error {
+	s.putObjectCalls++
+	return nil
+}
 
 func (s *fakeStore) PublicURL(bucket, key string) string {
 	return "http://public.example/" + bucket + "/" + key
@@ -186,6 +193,52 @@ func TestHandleUpdate_NotFound(t *testing.T) {
 	// Assert
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+}
+
+func TestHandleList_ReturnsCatalogContents(t *testing.T) {
+	// Arrange
+	api, cat, _ := newTestAPI(t, true)
+	cat.Register("a.txt", "pub", 10, "t1")
+	cat.Register("b.txt", "priv", 20, "t2")
+
+	// Act
+	rec := httptest.NewRecorder()
+	api.Routes().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/list", nil))
+
+	// Assert
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	body := decodeJSON(t, rec)
+	if body["count"] != float64(2) {
+		t.Errorf("count = %v, want 2", body["count"])
+	}
+}
+
+// TestHandleList_IsAPureReadWithNoSideEffects guards the fix for the Lua
+// original's GET /list, which triggered a full multi-bucket S3 listing plus
+// a manifest PUT to every bucket on every call (see resolver.SyncRegistry's
+// doc comment). /list must never call the store — it only reads the
+// already-populated catalog.
+func TestHandleList_IsAPureReadWithNoSideEffects(t *testing.T) {
+	// Arrange
+	api, cat, store := newTestAPI(t, true)
+	cat.Register("a.txt", "pub", 10, "t1")
+
+	// Act
+	rec := httptest.NewRecorder()
+	api.Routes().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/list", nil))
+
+	// Assert
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if store.listObjectsCalls != 0 {
+		t.Errorf("store.ListObjects was called %d time(s), want 0 — GET /list must be a pure catalog read", store.listObjectsCalls)
+	}
+	if store.putObjectCalls != 0 {
+		t.Errorf("store.PutObject was called %d time(s), want 0 — GET /list must not persist manifests", store.putObjectCalls)
 	}
 }
 

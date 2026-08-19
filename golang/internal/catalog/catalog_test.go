@@ -2,6 +2,8 @@ package catalog
 
 import (
 	"encoding/json"
+	"fmt"
+	"sync"
 	"testing"
 )
 
@@ -269,4 +271,55 @@ func TestLoadManifests_EntryBucketOverridesManifestBucket(t *testing.T) {
 	if entry.Bucket != "private-bucket" {
 		t.Errorf("Lookup(moved).Bucket = %q, want private-bucket", entry.Bucket)
 	}
+}
+
+// TestConcurrentAccess guards against the read-modify-write races the
+// nginx-lua security review flagged in the Lua registry's decomposed
+// ngx.shared.DICT entries (file:<key>, route:<route>, __all_keys__ as
+// separate keys with no atomicity across them — see the Technical Details
+// "does NOT replicate" list). Catalog uses one mutex guarding one map
+// instead; this test exercises every mutating and reading method
+// concurrently under `go test -race` so a regression back toward
+// per-field locking would be caught here rather than only incidentally by
+// -race passing on unrelated tests.
+func TestConcurrentAccess(t *testing.T) {
+	// Arrange
+	c := newTestCatalog()
+	const goroutines = 20
+	const opsPerGoroutine = 50
+
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+
+	// Act: hammer every exported mutator/reader concurrently.
+	for g := 0; g < goroutines; g++ {
+		go func(g int) {
+			defer wg.Done()
+			for i := 0; i < opsPerGoroutine; i++ {
+				key := fmt.Sprintf("key-%d-%d", g, i%5) // deliberate overlap across goroutines
+				bucket := "public-bucket"
+				if i%2 == 0 {
+					bucket = "private-bucket"
+				}
+
+				c.Register(key, bucket, int64(i), "t")
+				c.Set(key, bucket, int64(i), "t")
+				_, _ = c.Lookup(key)
+				_, _ = c.LookupByRoute("/" + bucket + "/" + key)
+				_ = c.ListAll()
+				_ = c.ListByBucket(bucket)
+				_ = c.Count()
+				_ = c.ManifestForBucket(bucket)
+
+				if i%10 == 0 {
+					c.Remove(key)
+				}
+			}
+		}(g)
+	}
+	wg.Wait()
+
+	// Assert: no crash/race (caught by `go test -race` if present); a
+	// final sanity read must still succeed without panicking.
+	_ = c.ListAll()
 }

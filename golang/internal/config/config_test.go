@@ -15,10 +15,14 @@ func withEnv(t *testing.T, kv map[string]string) {
 			t.Fatalf("setenv %s: %v", k, err)
 		}
 		t.Cleanup(func() {
+			var restoreErr error
 			if had {
-				os.Setenv(k, prev)
+				restoreErr = os.Setenv(k, prev)
 			} else {
-				os.Unsetenv(k)
+				restoreErr = os.Unsetenv(k)
+			}
+			if restoreErr != nil {
+				t.Errorf("restore env %s: %v", k, restoreErr)
 			}
 		})
 	}
@@ -34,10 +38,14 @@ func clearParparchikEnv(t *testing.T) {
 		"AWS_REGION", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY",
 	} {
 		prev, had := os.LookupEnv(k)
-		os.Unsetenv(k)
+		if err := os.Unsetenv(k); err != nil {
+			t.Fatalf("unsetenv %s: %v", k, err)
+		}
 		t.Cleanup(func() {
 			if had {
-				os.Setenv(k, prev)
+				if err := os.Setenv(k, prev); err != nil {
+					t.Errorf("restore env %s: %v", k, err)
+				}
 			}
 		})
 	}

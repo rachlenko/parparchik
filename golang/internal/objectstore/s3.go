@@ -152,7 +152,7 @@ func (s *S3Store) GetObject(ctx context.Context, bucket, key string) ([]byte, er
 		}
 		return nil, fmt.Errorf("objectstore: get %q/%q: %w", bucket, key, err)
 	}
-	defer out.Body.Close()
+	defer func() { _ = out.Body.Close() }()
 
 	body, err := io.ReadAll(out.Body)
 	if err != nil {

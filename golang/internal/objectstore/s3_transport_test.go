@@ -136,7 +136,7 @@ func TestS3Store_GetObject_Found(t *testing.T) {
 		if r.Method != http.MethodGet {
 			t.Errorf("method = %s, want GET", r.Method)
 		}
-		io.WriteString(w, content)
+		_, _ = io.WriteString(w, content)
 	}))
 	defer srv.Close()
 
@@ -160,7 +160,7 @@ func TestS3Store_GetObject_NotFound(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/xml")
 		w.WriteHeader(http.StatusNotFound)
-		io.WriteString(w, `<?xml version="1.0" encoding="UTF-8"?>
+		_, _ = io.WriteString(w, `<?xml version="1.0" encoding="UTF-8"?>
 <Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message><Key>missing-key</Key><RequestId>1</RequestId></Error>`)
 	}))
 	defer srv.Close()
@@ -256,7 +256,7 @@ func TestS3Store_ListObjects_SinglePage(t *testing.T) {
 	// Arrange
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/xml")
-		io.WriteString(w, `<?xml version="1.0" encoding="UTF-8"?>
+		_, _ = io.WriteString(w, `<?xml version="1.0" encoding="UTF-8"?>
 <ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
   <Name>my-bucket</Name>
   <IsTruncated>false</IsTruncated>
@@ -301,7 +301,7 @@ func TestS3Store_ListObjects_FollowsPagination(t *testing.T) {
 		requests++
 		w.Header().Set("Content-Type", "application/xml")
 		if r.URL.Query().Get("continuation-token") == "" {
-			io.WriteString(w, `<?xml version="1.0" encoding="UTF-8"?>
+			_, _ = io.WriteString(w, `<?xml version="1.0" encoding="UTF-8"?>
 <ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
   <Name>my-bucket</Name>
   <IsTruncated>true</IsTruncated>
@@ -310,7 +310,7 @@ func TestS3Store_ListObjects_FollowsPagination(t *testing.T) {
 </ListBucketResult>`)
 			return
 		}
-		io.WriteString(w, `<?xml version="1.0" encoding="UTF-8"?>
+		_, _ = io.WriteString(w, `<?xml version="1.0" encoding="UTF-8"?>
 <ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
   <Name>my-bucket</Name>
   <IsTruncated>false</IsTruncated>
@@ -344,7 +344,7 @@ func TestS3Store_ListObjects_Empty(t *testing.T) {
 	// Arrange
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/xml")
-		io.WriteString(w, `<?xml version="1.0" encoding="UTF-8"?>
+		_, _ = io.WriteString(w, `<?xml version="1.0" encoding="UTF-8"?>
 <ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
   <Name>my-bucket</Name>
   <IsTruncated>false</IsTruncated>
@@ -405,7 +405,7 @@ func TestS3Store_RoundTrip(t *testing.T) {
 			}
 			w.Header().Set("Content-Length", fmt.Sprintf("%d", len(body)))
 			if r.Method == http.MethodGet {
-				w.Write(body)
+				_, _ = w.Write(body)
 			}
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)

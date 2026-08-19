@@ -254,10 +254,10 @@ real need for that format, not pre-built as a stub.
 - ⚠️ Found and fixed via this work (not from the transport tests directly, but from manually running the built image against real MinIO while validating Task 9's deployment parity — see that task): `S3Store.PresignedURL` signed against the internal `S3_ENDPOINT` client instead of `S3_EXTERNAL_ENDPOINT`, producing presigned URLs unresolvable outside the Docker network. Fixed with a dedicated presign-only client bound to the external endpoint.
 
 ### Task 12: Verify acceptance criteria
-- [ ] verify every requirement in Overview is implemented (`go build ./...`, `go vet ./...`, `gofmt -l .` clean, `go test -race -cover ./...` passing)
-- [ ] verify all nine "does NOT replicate" findings in Technical Details have a corresponding test (several already do — audit for gaps)
-- [ ] run full project test suite
-- [ ] run project linter (`go vet`; consider adding `golangci-lint` — not yet in this repo)
+- [x] verify every requirement in Overview is implemented (`go build ./...`, `go vet ./...`, `gofmt -l .` clean, `go test -race -cover ./...` passing)
+- [x] verify all nine "does NOT replicate" findings in Technical Details have a corresponding test — audited; found and closed two real gaps: `GET /list` had no test at all (added `TestHandleList_ReturnsCatalogContents` and `TestHandleList_IsAPureReadWithNoSideEffects`, the latter asserting the store's `ListObjects`/`PutObject` are never called, guarding finding #5/#7 in the Technical Details table), and the catalog's mutex-safety claim (finding #9, replacing `ngx.shared.DICT`'s decomposed-key races) was only ever exercised incidentally by other tests passing under `-race` — added `TestConcurrentAccess` exercising every mutator/reader concurrently. The remaining findings (#1, #2, #6, #8) are structural (impossible-by-construction with `aws-sdk-go-v2`/Go's process model) rather than behavior a test asserts, or already covered (virtual-prefix-by-type, relocate priority, auth/rate-limit).
+- [x] run full project test suite
+- [x] run project linter — added `golangci-lint` (`golang/.golangci.yml`, `make go-lint`); fixed all 15 findings it surfaced on first run (unchecked `errcheck` returns — mostly `defer resp.Body.Close()` and test-handler writes — plus one dead method, `fakeStore.remove`, deleted per no-dead-code convention)
 
 ### Task 13: Documentation
 - [ ] add `golang/` as a fourth implementation option in the repo root `README.md`'s comparison table (alongside C++/Python/Lua)

@@ -15,7 +15,7 @@ func TestHTTPFetcher_Success(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/gzip")
-		w.Write([]byte("tarball-bytes"))
+		_, _ = w.Write([]byte("tarball-bytes"))
 	}))
 	defer srv.Close()
 
@@ -86,7 +86,7 @@ func TestHTTPFetcher_JoinsURLAndKeyCleanly(t *testing.T) {
 	var gotPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	}))
 	defer srv.Close()
 
