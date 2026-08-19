@@ -79,6 +79,7 @@ golang/
 │   │   ├── terraform/        Terraform Registry Protocol path parsing (primitives only, no format.Format — see package doc)
 │   │   └── docker/          OCI Distribution manifest/blob path parsing (primitives only, no format.Format — see package doc)
 │   ├── scan/               vulnerability scanning: Scanner interface, OSV.dev-backed implementation, Policy (not yet wired to an ingest hook)
+│   ├── license/            license detection: npm/Python/Maven metadata adapters, SPDX normalization (not yet wired to catalog entries or a policy check)
 │   ├── resolver/           route resolution, reconciliation, relocate, proxy fetch-through + TTL, virtual repo aggregation — the core business logic
 │   ├── httpapi/            HTTP handlers, routing, auth + rate-limit middleware, key validation
 │   └── metricsapi/         Prometheus metrics (client_golang)

@@ -399,11 +399,12 @@ once there's a real multi-tenant deployment to operate.
 - [x] run project tests - must pass before next task
 
 ### Task 26: License compliance detection
-- [ ] `internal/license`: extract declared license from format-specific metadata (npm `package.json` `license` field, Python `METADATA`/`PKG-INFO`, Maven POM `<licenses>`, ...) — one small adapter per format package from Tasks 14–23, not a new universal parser
-- [ ] normalize to SPDX identifiers where possible
-- [ ] expose via catalog entry metadata + an optional policy check (Task 28) blocking disallowed licenses
-- [ ] write tests per adapter (known-license, missing-license, malformed-metadata cases)
-- [ ] run project tests - must pass before next task
+- [x] `internal/license`: `ParseNPMPackageJSON` (modern string field + legacy object/array forms), `ParsePythonMetadata` (PKG-INFO/METADATA `License:` header, falling back to a `Classifier: License :: OSI Approved :: <name>` header), `ParseMavenPOM` (`<licenses><license><name>`) — one small adapter per ecosystem, not a universal parser. Helm/NuGet/Debian/RPM adapters not implemented (Helm charts have no license metadata field at all; the others need a real gating use case first)
+- [x] normalize to SPDX identifiers where possible (`NormalizeSPDX`, a hand-maintained alias table for the common cases — deliberately leaves ambiguous strings like bare "BSD" or "Public Domain" unnormalized rather than guessing)
+- [ ] expose via catalog entry metadata + an optional policy check (Task 28) blocking disallowed licenses — **not wired anywhere yet**, same "standalone tested primitives" scope as the Task 14-22 format parsers and Task 25's scan package; there's still no upload endpoint to feed real package metadata through these adapters
+- [x] write tests per adapter (known-license, missing-license, malformed-metadata cases)
+- [x] run project tests - must pass before next task
+- ⚠️ Fixed during review: two HIGH-severity bugs in `NormalizeSPDX`'s alias table, the shared primitive every adapter feeds through. (1) `"unlicensed"` (npm's own `"license": "UNLICENSED"` convention for "no rights granted, proprietary, do not use") was mapped to SPDX `Unlicense` — the opposite meaning (a public-domain-equivalent, maximally permissive dedication). Removed; regression tests added (`NormalizeSPDX("UNLICENSED") == ""`, case-insensitively). (2) The table only mapped *deprecated bare* GPL/LGPL forms (`"gpl-3.0"` etc.) to their current `-only` SPDX identifiers, with no identity entries — so a package already declaring the exact, current, unambiguous identifier (`"GPL-3.0-only"`) failed to normalize. Added identity entries for every `-only`/`-or-later` variant. Also fixed on review: `ParsePythonMetadata` now explicitly keeps the *first* `Classifier: License ::` line on a dual-licensed package (previously the last silently won, undocumented) — consistent with `ParseMavenPOM`'s already-documented "first license entry wins" choice; added a namespaced-POM regression test (100% of real Maven Central POMs declare `xmlns="http://maven.apache.org/POM/4.0.0"`, previously untested).
 
 ### Task 27: SBOM generation & ingestion
 - [ ] `internal/sbom`: generate a CycloneDX (or SPDX) SBOM document per repository/artifact from catalog + license (Task 26) + scan (Task 25) data
