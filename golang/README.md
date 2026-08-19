@@ -85,6 +85,7 @@ golang/
 │   ├── cleanup/            retention rules (max age, max total size, max version count) over catalog entries: Plan (dry-run) + Execute (real delete via objectstore.Store.DeleteObject); not yet wired to a scheduled GC goroutine
 │   ├── replication/        pull-only cross-instance sync over the existing HTTP API (GET /list + GET /{bucket}/{key}); not yet wired to a scheduled goroutine, no push direction
 │   ├── authz/              per-repository, per-action RBAC primitives (Authorizer, Role, Grant, ServiceAccounts bridge for the existing API-key auth); not yet wired into httpapi's live auth middleware, no OIDC/SSO
+│   ├── webhook/            event notifications (Registry + Dispatcher) with retry/backoff and per-attempt delivery status; not yet wired to any live event source
 │   ├── resolver/           route resolution, reconciliation, relocate, proxy fetch-through + TTL, virtual repo aggregation — the core business logic
 │   ├── httpapi/            HTTP handlers, routing, auth + rate-limit middleware, key validation
 │   └── metricsapi/         Prometheus metrics (client_golang)
@@ -267,6 +268,23 @@ deferred entirely — it needs a concrete identity provider this project
 doesn't have; `Principal` is deliberately agnostic to how it was
 authenticated, so adding one later only ever needs to produce a
 `Principal`, not touch this package.
+
+## Webhooks
+
+`internal/webhook` fires event notifications (upload, relocate, a policy
+quarantine/deny decision, a completed vulnerability scan) to configurable
+subscriber URLs. `Registry` holds subscribers filtered by event type;
+`Dispatcher.Fire` delivers concurrently to every matching subscriber,
+retrying a failed delivery with doubling backoff (default 3 attempts),
+optionally HMAC-SHA256-signing the payload (`X-Webhook-Signature`) when a
+subscriber has a configured secret, and returning every attempt's
+`DeliveryStatus` — not just the final one. Not yet wired into any live
+event source (no config surface exists yet for an operator to actually
+register a subscriber). **Security note:** a subscriber URL is trusted
+operator configuration, not user input — this package does not validate or
+allowlist it, so anything that later lets an untrusted party register a
+subscriber URL must add its own SSRF defenses before doing so; see the
+package doc comment.
 
 ## Development
 
