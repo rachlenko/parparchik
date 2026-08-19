@@ -84,6 +84,7 @@ golang/
 │   ├── policy/             allow/quarantine/deny policy engine over scan+license+age, with waivers and an audit log (not yet wired to a request path — see below)
 │   ├── cleanup/            retention rules (max age, max total size, max version count) over catalog entries: Plan (dry-run) + Execute (real delete via objectstore.Store.DeleteObject); not yet wired to a scheduled GC goroutine
 │   ├── replication/        pull-only cross-instance sync over the existing HTTP API (GET /list + GET /{bucket}/{key}); not yet wired to a scheduled goroutine, no push direction
+│   ├── authz/              per-repository, per-action RBAC primitives (Authorizer, Role, Grant, ServiceAccounts bridge for the existing API-key auth); not yet wired into httpapi's live auth middleware, no OIDC/SSO
 │   ├── resolver/           route resolution, reconciliation, relocate, proxy fetch-through + TTL, virtual repo aggregation — the core business logic
 │   ├── httpapi/            HTTP handlers, routing, auth + rate-limit middleware, key validation
 │   └── metricsapi/         Prometheus metrics (client_golang)
@@ -250,6 +251,22 @@ existing priority semantics unchanged for conflict resolution — no new
 conflict model. Push (the reverse direction) and a scheduled replication
 goroutine in `cmd/parparchik` are not implemented; the latter needs a real
 peer-list/interval config surface this project doesn't have yet.
+
+## Access control (RBAC primitives)
+
+`internal/authz` models per-repository, per-action authorization —
+`Authorizer.Allowed(principal, action, repo)`, deny-by-default — on top of,
+not instead of, `internal/httpapi.AuthConfig`'s existing flat shared-API-key
+gate. `ServiceAccounts` bridges the two: it maps an API key `AuthConfig`
+already validated to the `Principal` (identity + role names) it acts as,
+and `SuperuserRole()` is the documented way an existing flat-API-key
+deployment reproduces today's all-or-nothing access exactly under the new
+model, by mapping every key to a `Principal` holding only that role. Not
+yet wired into httpapi's live request path, and OIDC/SSO integration is
+deferred entirely — it needs a concrete identity provider this project
+doesn't have; `Principal` is deliberately agnostic to how it was
+authenticated, so adding one later only ever needs to produce a
+`Principal`, not touch this package.
 
 ## Development
 
